@@ -1,8 +1,21 @@
 // SECTION: State & Storage
-// In this demo, wishlists are stored in localStorage by id.
-// A real app would use a backend so links work across devices.
+// Wishlists are stored in Firebase Firestore by id so links work across devices.
 
-const STORAGE_KEY = "wishlink_registries_v1";
+// Initialize Firebase (config values should be filled with your project's settings)
+const firebaseConfig = {
+  // TODO: replace with your Firebase project's config
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+
+/* global firebase */
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
 
 /** @typedef {{
  *  id: string;
@@ -46,19 +59,13 @@ const wishlistFooter = document.getElementById("wishlist-footer");
 const noWishlistMessage = document.getElementById("no-wishlist-message");
 
 // SECTION: Utilities
-function loadAllWishlists() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error("Failed to parse wishlists", e);
-    return {};
-  }
+async function loadWishlistFromFirestore(id) {
+  const doc = await db.collection("wishlists").doc(id).get();
+  return doc.exists ? doc.data() : null;
 }
 
-function saveAllWishlists(map) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+async function saveWishlistToFirestore(wishlist) {
+  await db.collection("wishlists").doc(wishlist.id).set(wishlist);
 }
 
 function createId() {
@@ -117,9 +124,8 @@ function render() {
   }
 
   wishlist.items.forEach((item) => {
-    const visiblePurchased = isOwner ? false : item.purchased;
     const li = document.createElement("li");
-    li.className = "item-card" + (visiblePurchased ? " purchased" : "");
+    li.className = "item-card" + (item.purchased ? " purchased" : "");
     li.dataset.itemId = item.id;
 
     li.innerHTML = `
@@ -147,9 +153,9 @@ function render() {
               ? `<a href="${item.link}" target="_blank" rel="noopener noreferrer" class="item-link">View link</a>`
               : ""
           }
-           <span class="item-status-pill">${
-             visiblePurchased ? "Purchased" : "Available"
-           }</span>
+          <span class="item-status-pill">${
+            item.purchased ? "Purchased" : "Available"
+          }</span>
         </div>
       </div>
       <div class="item-actions"></div>
@@ -157,7 +163,7 @@ function render() {
 
     const actions = li.querySelector(".item-actions");
 
-    if (visiblePurchased) {
+    if (item.purchased) {
       const purchaserLabel = document.createElement("div");
       purchaserLabel.className = "item-purchased-label";
       purchaserLabel.textContent = "Marked as purchased";
@@ -229,35 +235,28 @@ function render() {
   // Footer summary
   const total = wishlist.items.length;
   const purchasedCount = wishlist.items.filter((i) => i.purchased).length;
-  const visiblePurchasedCount = isOwner ? 0 : purchasedCount;
-  const remaining = total - visiblePurchasedCount;
+  const remaining = total - purchasedCount;
 
   if (!total) {
     wishlistFooter.textContent = "";
     return;
   }
- 
-  const purchasedLabel = isOwner
-    ? "(hidden from owner)"
-    : `${visiblePurchasedCount} purchased`;
- 
+
   wishlistFooter.innerHTML = `
     <span><strong>${remaining}</strong> still available</span>
     <span aria-hidden="true">·</span>
-    <span>${purchasedLabel}</span>
+    <span>${purchasedCount} purchased</span>
   `;
 }
 
 // SECTION: Mutations
-function setWishlist(nextWishlist) {
-  const all = loadAllWishlists();
-  all[nextWishlist.id] = nextWishlist;
-  saveAllWishlists(all);
+async function setWishlist(nextWishlist) {
+  await saveWishlistToFirestore(nextWishlist);
   viewModel = { ...viewModel, wishlist: nextWishlist };
   render();
 }
 
-function handleCreateOwner(event) {
+async function handleCreateOwner(event) {
   event.preventDefault();
   const formData = new FormData(ownerForm);
   const ownerName = (formData.get("ownerName") || "").toString().trim();
@@ -273,9 +272,10 @@ function handleCreateOwner(event) {
   };
 
   viewModel.isOwner = true;
-  setWishlist(wishlist);
+  await setWishlist(wishlist);
   window.history.replaceState({}, "", buildShareLink(id));
 }
+
 
 function handleOpenLink(event) {
   event.preventDefault();
@@ -295,7 +295,7 @@ function handleOpenLink(event) {
   }
 }
 
-function handleAddItem(event) {
+async function handleAddItem(event) {
   event.preventDefault();
   if (!viewModel.wishlist) return;
 
@@ -325,10 +325,10 @@ function handleAddItem(event) {
   };
 
   addItemForm.reset();
-  setWishlist(wishlist);
+  await setWishlist(wishlist);
 }
 
-function handleTogglePurchased(itemId) {
+async function handleTogglePurchased(itemId) {
   if (!viewModel.wishlist) return;
 
   const wishlist = {
@@ -338,10 +338,11 @@ function handleTogglePurchased(itemId) {
     ),
   };
 
-  setWishlist(wishlist);
+  await setWishlist(wishlist);
 }
 
-function handleDeleteItem(itemId) {
+
+async function handleDeleteItem(itemId) {
   if (!viewModel.wishlist) return;
   const confirmed = window.confirm("Remove this item from the wishlist?");
   if (!confirmed) return;
@@ -351,8 +352,9 @@ function handleDeleteItem(itemId) {
     items: viewModel.wishlist.items.filter((i) => i.id !== itemId),
   };
 
-  setWishlist(wishlist);
+  await setWishlist(wishlist);
 }
+
 
 function handleCopyLink() {
   if (!shareInput.value) return;
@@ -375,9 +377,8 @@ function handleCopyLink() {
 }
 
 // SECTION: Navigation / Loading
-function loadWishlistById(id, isOwner, pushUrl) {
-  const all = loadAllWishlists();
-  const wishlist = all[id] || null;
+async function loadWishlistById(id, isOwner, pushUrl) {
+  const wishlist = await loadWishlistFromFirestore(id);
 
   viewModel = { isOwner, wishlist };
   render();
@@ -387,8 +388,9 @@ function loadWishlistById(id, isOwner, pushUrl) {
   }
 }
 
+
 // Boot
-function init() {
+async function init() {
   ownerForm.addEventListener("submit", handleCreateOwner);
   openLinkForm.addEventListener("submit", handleOpenLink);
   addItemForm.addEventListener("submit", handleAddItem);
@@ -397,7 +399,7 @@ function init() {
   const idFromUrl = getWishlistIdFromUrl();
   if (idFromUrl) {
     // Visitor comes from a shared link – viewer mode by default
-    loadWishlistById(idFromUrl, false, false);
+    await loadWishlistById(idFromUrl, false, false);
   } else {
     // No active wishlist yet – keep empty state; owner can create
     viewModel = { isOwner: false, wishlist: null };
