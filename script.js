@@ -1,8 +1,3 @@
-// SECTION: State & Storage
-// Wishlists are stored in Firebase Firestore by id so links work across devices.
-
-// Initialize Firebase (config values should be filled with your project's settings)
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyDfGgPJbp_r7u2pmCMBf0eh-P0m9ix1rbQ",
   authDomain: "wishlist-app-4dc57.firebaseapp.com",
@@ -15,35 +10,22 @@ const firebaseConfig = {
 
 /* global firebase */
 firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
 const db = firebase.firestore();
+const wishlistsRef = db.collection("wishlists");
 
+const authForm = document.getElementById("auth-form");
+const authEmail = document.getElementById("auth-email");
+const authPassword = document.getElementById("auth-password");
+const authMessage = document.getElementById("auth-message");
+const authStatus = document.getElementById("auth-status");
+const signInBtn = document.getElementById("sign-in-btn");
+const signUpBtn = document.getElementById("sign-up-btn");
+const signOutBtn = document.getElementById("sign-out-btn");
+const signedInControls = document.getElementById("signed-in-controls");
+const myWishlists = document.getElementById("my-wishlists");
 
-/** @typedef {{
- *  id: string;
- *  ownerName: string;
- *  title: string;
- *  items: WishlistItem[];
- * }} Wishlist
- */
-
-/** @typedef {{
- *  id: string;
- *  title: string;
- *  price: string;
- *  link: string;
- *  image: string;
- *  purchased: boolean;
- *  purchasedAt?: string;
- * }} WishlistItem
- */
-
-/** @typedef {{
- *  isOwner: boolean;
- *  wishlist: Wishlist | null;
- * }} ViewModel
- */
-
-// SECTION: DOM
 const ownerForm = document.getElementById("create-owner-form");
 const openLinkForm = document.getElementById("open-link-form");
 const addItemForm = document.getElementById("add-item-form");
@@ -53,29 +35,24 @@ const wishlistOwnerLabel = document.getElementById("wishlist-owner-label");
 const wishlistTitleLabel = document.getElementById("wishlist-title-label");
 const shareInput = document.getElementById("share-link");
 const copyLinkBtn = document.getElementById("copy-link-btn");
-
 const itemsEmpty = document.getElementById("items-empty");
 const itemsList = document.getElementById("items-list");
 const wishlistFooter = document.getElementById("wishlist-footer");
 const noWishlistMessage = document.getElementById("no-wishlist-message");
 
-// SECTION: Utilities
-async function loadWishlistFromFirestore(id) {
-  const doc = await db.collection("wishlists").doc(id).get();
-  return doc.exists ? doc.data() : null;
-}
-
-async function saveWishlistToFirestore(wishlist) {
-  await db.collection("wishlists").doc(wishlist.id).set(wishlist);
-}
+let currentUser = null;
+let viewModel = {
+  wishlist: null,
+  isOwner: false,
+  claims: {}
+};
 
 function createId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
 function getWishlistIdFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("w") || null;
+  return new URLSearchParams(window.location.search).get("w");
 }
 
 function buildShareLink(id) {
@@ -84,344 +61,420 @@ function buildShareLink(id) {
   return url.toString();
 }
 
-// SECTION: Render
-/** @type {ViewModel} */
-let viewModel = { isOwner: false, wishlist: null };
+function showAuthMessage(message) {
+  authMessage.textContent = message || "";
+}
+
+async function signIn() {
+  showAuthMessage("");
+  try {
+    await auth.signInWithEmailAndPassword(
+      authEmail.value.trim(),
+      authPassword.value
+    );
+  } catch (error) {
+    showAuthMessage(error.message);
+  }
+}
+
+async function signUp() {
+  showAuthMessage("");
+  try {
+    await auth.createUserWithEmailAndPassword(
+      authEmail.value.trim(),
+      authPassword.value
+    );
+  } catch (error) {
+    showAuthMessage(error.message);
+  }
+}
+
+async function loadClaims(wishlistId) {
+  const snapshot = await wishlistsRef
+    .doc(wishlistId)
+    .collection("claims")
+    .get();
+
+  const claims = {};
+  snapshot.forEach((doc) => {
+    claims[doc.id] = doc.data();
+  });
+  return claims;
+}
+
+async function loadWishlistById(id, updateUrl = false) {
+  try {
+    const doc = await wishlistsRef.doc(id).get();
+
+    if (!doc.exists) {
+      viewModel = { wishlist: null, isOwner: false, claims: {} };
+      render();
+      return;
+    }
+
+    const wishlist = doc.data();
+    const claims = await loadClaims(id);
+
+    viewModel = {
+      wishlist: { ...wishlist, items: wishlist.items || [] },
+      isOwner: Boolean(currentUser && wishlist.ownerUid === currentUser.uid),
+      claims
+    };
+
+    if (updateUrl) {
+      window.history.replaceState({}, "", buildShareLink(id));
+    }
+
+    render();
+  } catch (error) {
+    console.error("Could not load wishlist:", error);
+    alert(`Could not load wishlist: ${error.message}`);
+  }
+}
+
+async function loadMyWishlists() {
+  myWishlists.replaceChildren();
+
+  if (!currentUser) return;
+
+  try {
+    const snapshot = await wishlistsRef
+      .where("ownerUid", "==", currentUser.uid)
+      .get();
+
+    if (snapshot.empty) {
+      myWishlists.textContent = "You haven’t created any wishlists yet.";
+      return;
+    }
+
+    snapshot.forEach((doc) => {
+      const wishlist = doc.data();
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn ghost full-width wishlist-select";
+      button.textContent = wishlist.title || "Untitled wishlist";
+      button.addEventListener("click", () => loadWishlistById(doc.id, true));
+      myWishlists.appendChild(button);
+    });
+  } catch (error) {
+    console.error("Could not load your wishlists:", error);
+    myWishlists.textContent = `Could not load your wishlists: ${error.message}`;
+  }
+}
 
 function render() {
-  const { wishlist, isOwner } = viewModel;
+  const { wishlist, isOwner, claims } = viewModel;
 
   if (!wishlist) {
     wishlistShell.classList.add("hidden");
-    itemsList.innerHTML = "";
+    itemsList.replaceChildren();
     itemsEmpty.classList.add("hidden");
     wishlistFooter.textContent = "";
-    noWishlistMessage.classList.toggle("hidden", !getWishlistIdFromUrl());
     addItemForm.classList.add("hidden");
+    noWishlistMessage.classList.toggle("hidden", !getWishlistIdFromUrl());
     return;
   }
 
   noWishlistMessage.classList.add("hidden");
   wishlistShell.classList.remove("hidden");
-
   wishlistOwnerLabel.textContent = `${wishlist.ownerName}'s wishlist`;
-  wishlistTitleLabel.textContent = wishlist.title;
+  wishlistTitleLabel.textContent = wishlist.title || "Wishlist";
+  shareInput.value = buildShareLink(wishlist.id);
+  addItemForm.classList.toggle("hidden", !isOwner);
 
-  const shareLink = buildShareLink(wishlist.id);
-  shareInput.value = shareLink;
-
-  if (isOwner) {
-    addItemForm.classList.remove("hidden");
-  } else {
-    addItemForm.classList.add("hidden");
-  }
-
-  // Items
-  itemsList.innerHTML = "";
-  if (!wishlist.items.length) {
-    itemsEmpty.classList.remove("hidden");
-  } else {
-    itemsEmpty.classList.add("hidden");
-  }
+  itemsList.replaceChildren();
+  itemsEmpty.classList.toggle("hidden", wishlist.items.length > 0);
 
   wishlist.items.forEach((item) => {
-    const visiblePurchased = isOwner ? false : item.purchased;
+    const claimed = Boolean(claims[item.id] || item.purchased);
     const li = document.createElement("li");
-    li.className = "item-card" + (visiblePurchased ? " purchased" : "");
-    li.dataset.itemId = item.id;
+    li.className = `item-card${claimed && !isOwner ? " purchased" : ""}`;
 
-    li.innerHTML = `
-      <div class="item-media">
-        ${
-          item.image
-            ? `<img src="${item.image}" alt="${
-                item.title || "Wishlist item"
-              }" class="item-image">`
-            : `<div class="item-placeholder"></div>`
-        }
-      </div>
-      <div class="item-main">
-        <div class="item-title-row">
-           <p class="item-title">${item.title || "Untitled item"}</p>
-          ${
-            item.price
-              ? `<span class="item-price">${item.price}</span>`
-              : ""
-          }
-        </div>
-        <div class="item-meta">
-          ${
-            item.link
-              ? `<a href="${item.link}" target="_blank" rel="noopener noreferrer" class="item-link">View link</a>`
-              : ""
-          }
-          <span class="item-status-pill">${
-            visiblePurchased ? "Purchased" : "Available"
-          }</span>
-        </div>
-      </div>
-      <div class="item-actions"></div>
-    `;
-
-    const actions = li.querySelector(".item-actions");
- 
-    if (visiblePurchased) {
-      const purchaserLabel = document.createElement("div");
-      purchaserLabel.className = "item-purchased-label";
-      purchaserLabel.textContent = "Marked as purchased";
-      const note = document.createElement("div");
-      note.className = "item-purchased-note";
-      note.textContent = "Others will see that this is no longer available.";
-
-      actions.appendChild(purchaserLabel);
-      actions.appendChild(note);
-
-      if (isOwner) {
-        const ownerControls = document.createElement("div");
-        ownerControls.className = "item-owner-controls";
-
-        const markAvailableBtn = document.createElement("button");
-        markAvailableBtn.type = "button";
-        markAvailableBtn.className = "btn ghost small";
-        markAvailableBtn.textContent = "Mark available";
-        markAvailableBtn.addEventListener("click", () =>
-          handleTogglePurchased(item.id)
-        );
-
-        const deleteBtn = document.createElement("button");
-        deleteBtn.type = "button";
-        deleteBtn.className = "btn danger small";
-        deleteBtn.textContent = "Remove";
-        deleteBtn.addEventListener("click", () => handleDeleteItem(item.id));
-
-        ownerControls.appendChild(markAvailableBtn);
-        ownerControls.appendChild(deleteBtn);
-        actions.appendChild(ownerControls);
-      }
+    const media = document.createElement("div");
+    media.className = "item-media";
+    if (item.image) {
+      const img = document.createElement("img");
+      img.className = "item-image";
+      img.src = item.image;
+      img.alt = item.title || "Wishlist item";
+      media.appendChild(img);
     } else {
-      // Not purchased yet
-      if (isOwner) {
-        const ownerControls = document.createElement("div");
-        ownerControls.className = "item-owner-controls";
-
-        const markPurchasedBtn = document.createElement("button");
-        markPurchasedBtn.type = "button";
-        markPurchasedBtn.className = "btn secondary small";
-        markPurchasedBtn.textContent = "Mark purchased";
-        markPurchasedBtn.addEventListener("click", () =>
-          handleTogglePurchased(item.id)
-        );
-
-        const deleteBtn = document.createElement("button");
-        deleteBtn.type = "button";
-        deleteBtn.className = "btn danger small";
-        deleteBtn.textContent = "Remove";
-        deleteBtn.addEventListener("click", () => handleDeleteItem(item.id));
-
-        ownerControls.appendChild(markPurchasedBtn);
-        ownerControls.appendChild(deleteBtn);
-        actions.appendChild(ownerControls);
-      } else {
-        const claimBtn = document.createElement("button");
-        claimBtn.type = "button";
-        claimBtn.className = "btn primary small";
-        claimBtn.textContent = "I purchased this";
-        claimBtn.addEventListener("click", () => handleTogglePurchased(item.id));
-        actions.appendChild(claimBtn);
-      }
+      const placeholder = document.createElement("div");
+      placeholder.className = "item-placeholder";
+      media.appendChild(placeholder);
     }
 
+    const main = document.createElement("div");
+    main.className = "item-main";
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "item-title-row";
+
+    const title = document.createElement("p");
+    title.className = "item-title";
+    title.textContent = item.title || "Untitled item";
+    titleRow.appendChild(title);
+
+    if (item.price) {
+      const price = document.createElement("span");
+      price.className = "item-price";
+      price.textContent = item.price;
+      titleRow.appendChild(price);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "item-meta";
+
+    if (item.link) {
+      const link = document.createElement("a");
+      link.className = "item-link";
+      link.href = item.link;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "View link";
+      meta.appendChild(link);
+    }
+
+    const status = document.createElement("span");
+    status.className = "item-status-pill";
+    status.textContent = isOwner ? "" : claimed ? "Claimed" : "Available";
+    meta.appendChild(status);
+
+    main.append(titleRow, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "item-actions";
+
+    if (isOwner) {
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "btn danger small";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => handleDeleteItem(item.id));
+      actions.appendChild(removeButton);
+
+      if (claims[item.id]) {
+        const availableButton = document.createElement("button");
+        availableButton.type = "button";
+        availableButton.className = "btn ghost small";
+        availableButton.textContent = "Mark available";
+        availableButton.addEventListener("click", () => clearClaim(item.id));
+        actions.appendChild(availableButton);
+      }
+    } else if (claimed) {
+      const label = document.createElement("span");
+      label.className = "item-purchased-label";
+      label.textContent = "Claimed";
+      actions.appendChild(label);
+    } else {
+      const claimButton = document.createElement("button");
+      claimButton.type = "button";
+      claimButton.className = "btn primary small";
+      claimButton.textContent = "I purchased this";
+      claimButton.addEventListener("click", () => claimItem(item.id));
+      actions.appendChild(claimButton);
+    }
+
+    li.append(media, main, actions);
     itemsList.appendChild(li);
   });
 
-  // Footer summary
-  const total = wishlist.items.length;
-  const purchasedCount = wishlist.items.filter((i) => i.purchased).length;
-  const remaining = total - purchasedCount;
- 
-  if (!total) {
-    wishlistFooter.textContent = "";
-    return;
-  }
- 
-  if (isOwner) {
-    wishlistFooter.innerHTML = `
-      <span><strong>${remaining}</strong> still available</span>
-      <span aria-hidden="true">·</span>
-      <span>Purchased status is hidden from the owner</span>
-    `;
-  } else {
-    wishlistFooter.innerHTML = `
-      <span><strong>${remaining}</strong> still available</span>
-      <span aria-hidden="true">·</span>
-      <span>${purchasedCount} purchased</span>
-    `;
-  }
-}
-
-// SECTION: Mutations
-async function setWishlist(nextWishlist) {
-  await saveWishlistToFirestore(nextWishlist);
-  viewModel = { ...viewModel, wishlist: nextWishlist };
-  render();
+  const claimedCount = Object.keys(claims).length;
+  wishlistFooter.textContent = isOwner
+    ? `${wishlist.items.length} item(s). Claim status is hidden from you.`
+    : `${Math.max(0, wishlist.items.length - claimedCount)} still available · ${claimedCount} claimed`;
 }
 
 async function handleCreateOwner(event) {
   event.preventDefault();
+
+  if (!currentUser) {
+    alert("Sign in before creating a wishlist.");
+    return;
+  }
+
   const formData = new FormData(ownerForm);
-  const ownerName = (formData.get("ownerName") || "").toString().trim();
-  const wishlistTitle = (formData.get("wishlistTitle") || "").toString().trim();
-  if (!ownerName || !wishlistTitle) return;
+  const ownerName = String(formData.get("ownerName") || "").trim();
+  const title = String(formData.get("wishlistTitle") || "").trim();
+  if (!ownerName || !title) return;
 
   const id = createId();
   const wishlist = {
     id,
+    ownerUid: currentUser.uid,
     ownerName,
-    title: wishlistTitle,
+    title,
     items: [],
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
   };
 
   try {
-  await saveWishlistToFirestore(wishlist);
-
-  viewModel = { isOwner: true, wishlist };
-  window.history.replaceState({}, "", buildShareLink(id));
-  render();
-} catch (error) {
-  console.error("Could not create wishlist:", error);
-  alert(`Could not create wishlist: ${error.message}`);
-}
-}
-
-
-function handleOpenLink(event) {
-  event.preventDefault();
-  const raw = openLinkForm.openLink.value.trim();
-  if (!raw) return;
-
-  try {
-    const url = new URL(raw);
-    const id = url.searchParams.get("w");
-    if (!id) {
-      alert("That URL doesn't look like a wishlist link.");
-      return;
-    }
-    loadWishlistById(id, false, true);
-  } catch (e) {
-    alert("Please paste a full wishlist link including 'https://' .");
+    await wishlistsRef.doc(id).set(wishlist);
+    window.history.replaceState({}, "", buildShareLink(id));
+    await loadMyWishlists();
+    await loadWishlistById(id);
+    ownerForm.reset();
+  } catch (error) {
+    console.error("Could not create wishlist:", error);
+    alert(`Could not create wishlist: ${error.message}`);
   }
 }
 
 async function handleAddItem(event) {
   event.preventDefault();
-  if (!viewModel.wishlist) return;
+  if (!viewModel.isOwner || !viewModel.wishlist) return;
 
   const data = new FormData(addItemForm);
-  const title = (data.get("title") || "").toString().trim();
-  const price = (data.get("price") || "").toString().trim();
-  const link = (data.get("link") || "").toString().trim();
-  const image = (data.get("image") || "").toString().trim();
+  const item = {
+    id: createId(),
+    title: String(data.get("title") || "").trim(),
+    price: String(data.get("price") || "").trim(),
+    link: String(data.get("link") || "").trim(),
+    image: String(data.get("image") || "").trim()
+  };
 
-  if (!title && !link) {
-    alert("Add at least a title or a link for the item.");
+  if (!item.title) return;
+
+  const next = {
+    ...viewModel.wishlist,
+    items: [...viewModel.wishlist.items, item]
+  };
+
+  try {
+    await wishlistsRef.doc(next.id).set(next);
+    addItemForm.reset();
+    await loadWishlistById(next.id);
+  } catch (error) {
+    console.error("Could not add item:", error);
+    alert(`Could not add item: ${error.message}`);
+  }
+}
+
+async function handleDeleteItem(itemId) {
+  if (!viewModel.isOwner || !viewModel.wishlist) return;
+  if (!confirm("Remove this item from the wishlist?")) return;
+
+  const id = viewModel.wishlist.id;
+  const next = {
+    ...viewModel.wishlist,
+    items: viewModel.wishlist.items.filter((item) => item.id !== itemId)
+  };
+
+  try {
+    await wishlistsRef.doc(id).set(next);
+    const claimRef = wishlistsRef.doc(id).collection("claims").doc(itemId);
+    const claimDoc = await claimRef.get();
+    if (claimDoc.exists) await claimRef.delete();
+    await loadWishlistById(id);
+  } catch (error) {
+    console.error("Could not remove item:", error);
+    alert(`Could not remove item: ${error.message}`);
+  }
+}
+
+async function claimItem(itemId) {
+  if (!currentUser) {
+    alert("Sign in to claim an item.");
     return;
   }
 
-  const item = {
-    id: createId(),
-    title,
-    price,
-    link,
-    image,
-    purchased: false,
-  };
-
-  const wishlist = {
-    ...viewModel.wishlist,
-    items: [...viewModel.wishlist.items, item],
-  };
-
-  addItemForm.reset();
-  await setWishlist(wishlist);
-}
-
-async function handleTogglePurchased(itemId) {
-  if (!viewModel.wishlist) return;
-
-  const wishlist = {
-    ...viewModel.wishlist,
-    items: viewModel.wishlist.items.map((i) =>
-      i.id === itemId ? { ...i, purchased: !i.purchased } : i
-    ),
-  };
-
-  await setWishlist(wishlist);
-}
-
-
-async function handleDeleteItem(itemId) {
-  if (!viewModel.wishlist) return;
-  const confirmed = window.confirm("Remove this item from the wishlist?");
-  if (!confirmed) return;
-
-  const wishlist = {
-    ...viewModel.wishlist,
-    items: viewModel.wishlist.items.filter((i) => i.id !== itemId),
-  };
-
-  await setWishlist(wishlist);
-}
-
-
-function handleCopyLink() {
-  if (!shareInput.value) return;
-
-  shareInput.select();
-  shareInput.setSelectionRange(0, shareInput.value.length);
+  const wishlistId = viewModel.wishlist.id;
+  const claimRef = wishlistsRef
+    .doc(wishlistId)
+    .collection("claims")
+    .doc(itemId);
 
   try {
+    await claimRef.set({
+      itemId,
+      claimedBy: currentUser.uid,
+      claimedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await loadWishlistById(wishlistId);
+  } catch (error) {
+    console.error("Could not claim item:", error);
+    alert("That item may already have been claimed. Refresh the wishlist and try again.");
+  }
+}
+
+async function clearClaim(itemId) {
+  if (!viewModel.isOwner || !viewModel.wishlist) return;
+
+  try {
+    await wishlistsRef
+      .doc(viewModel.wishlist.id)
+      .collection("claims")
+      .doc(itemId)
+      .delete();
+    await loadWishlistById(viewModel.wishlist.id);
+  } catch (error) {
+    console.error("Could not clear claim:", error);
+    alert(`Could not mark item available: ${error.message}`);
+  }
+}
+
+async function handleOpenLink(event) {
+  event.preventDefault();
+  const raw = new FormData(openLinkForm).get("openLink");
+  try {
+    const url = new URL(String(raw));
+    const id = url.searchParams.get("w");
+    if (!id) throw new Error("The link must include a wishlist ID.");
+    await loadWishlistById(id, true);
+  } catch (error) {
+    alert(error.message || "Enter a valid full wishlist link.");
+  }
+}
+
+async function handleCopyLink() {
+  if (!shareInput.value) return;
+  try {
+    await navigator.clipboard.writeText(shareInput.value);
+    copyLinkBtn.textContent = "Copied";
+    setTimeout(() => (copyLinkBtn.textContent = "Copy"), 1500);
+  } catch {
+    shareInput.select();
     document.execCommand("copy");
-  } catch (e) {
-    // execCommand may fail in some environments; ignore
-  }
-
-  copyLinkBtn.textContent = "Copied";
-  copyLinkBtn.disabled = true;
-  setTimeout(() => {
-    copyLinkBtn.textContent = "Copy";
-    copyLinkBtn.disabled = false;
-  }, 1500);
-}
-
-// SECTION: Navigation / Loading
-async function loadWishlistById(id, isOwner, pushUrl) {
-  const wishlist = await loadWishlistFromFirestore(id);
-
-  viewModel = { isOwner, wishlist };
-  render();
-
-  if (wishlist && pushUrl) {
-    window.history.replaceState({}, "", buildShareLink(id));
   }
 }
 
+signInBtn.addEventListener("click", (event) => {
+  event.preventDefault();
+  signIn();
+});
 
-// Boot
-async function init() {
-  ownerForm.addEventListener("submit", handleCreateOwner);
-  openLinkForm.addEventListener("submit", handleOpenLink);
-  addItemForm.addEventListener("submit", handleAddItem);
-  copyLinkBtn.addEventListener("click", handleCopyLink);
+authForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  signIn();
+});
 
-  const idFromUrl = getWishlistIdFromUrl();
-  if (idFromUrl) {
-    // Visitor comes from a shared link – viewer mode by default
-    await loadWishlistById(idFromUrl, false, false);
+signUpBtn.addEventListener("click", signUp);
+signOutBtn.addEventListener("click", () => auth.signOut());
+ownerForm.addEventListener("submit", handleCreateOwner);
+openLinkForm.addEventListener("submit", handleOpenLink);
+addItemForm.addEventListener("submit", handleAddItem);
+copyLinkBtn.addEventListener("click", handleCopyLink);
+
+auth.onAuthStateChanged(async (user) => {
+  currentUser = user;
+
+  signedInControls.classList.toggle("hidden", !user);
+  signInBtn.classList.toggle("hidden", Boolean(user));
+  signUpBtn.classList.toggle("hidden", Boolean(user));
+  signOutBtn.classList.toggle("hidden", !user);
+  authEmail.disabled = Boolean(user);
+  authPassword.disabled = Boolean(user);
+
+  authStatus.textContent = user ? `Signed in: ${user.email}` : "Not signed in";
+  showAuthMessage("");
+
+  await loadMyWishlists();
+
+  const id = getWishlistIdFromUrl();
+  if (id) {
+    await loadWishlistById(id);
   } else {
-    // No active wishlist yet – keep empty state; owner can create
-    viewModel = { isOwner: false, wishlist: null };
+    viewModel = { wishlist: null, isOwner: false, claims: {} };
     render();
   }
-}
-
-window.addEventListener("DOMContentLoaded", init);
+});
