@@ -306,12 +306,23 @@ function render() {
       resetButton.textContent = "Reset claim";
       resetButton.addEventListener("click", () => clearClaim(item.id));
       actions.appendChild(resetButton);
-    } else if (claimed) {
-      const label = document.createElement("span");
-      label.className = "item-purchased-label";
-      label.textContent = "No longer needed";
-      actions.appendChild(label);
-    } else {
+    }  else if (claimed) {
+  const label = document.createElement("span");
+  label.className = "item-purchased-label";
+  label.textContent = "No longer needed";
+  actions.appendChild(label);
+
+  const claim = claims[item.id];
+
+  if (currentUser && claim?.claimedBy === currentUser.uid) {
+    const undoButton = document.createElement("button");
+    undoButton.type = "button";
+    undoButton.className = "btn ghost small";
+    undoButton.textContent = "Undo claim";
+    undoButton.addEventListener("click", () => undoClaim(item.id));
+    actions.appendChild(undoButton);
+  }
+}else {
       const claimButton = document.createElement("button");
       claimButton.type = "button";
       claimButton.className = "btn primary small";
@@ -428,6 +439,28 @@ async function handleDeleteItem(itemId) {
   }
 }
 
+async function undoClaim(itemId) {
+  if (!currentUser || !viewModel.wishlist) return;
+
+  const claimRef = wishlistsRef
+    .doc(viewModel.wishlist.id)
+    .collection("claims")
+    .doc(itemId);
+
+  try {
+    const claimDoc = await claimRef.get();
+
+    if (!claimDoc.exists || claimDoc.data().claimedBy !== currentUser.uid) {
+      alert("Only the person who claimed this item can undo the claim.");
+      return;
+    }
+
+    await claimRef.delete();
+  } catch (error) {
+    console.error("Could not undo claim:", error);
+    alert(`Could not undo claim: ${error.message}`);
+  }
+}
 async function claimItem(itemId) {
   if (!currentUser) {
     alert("Sign in to claim an item.");
