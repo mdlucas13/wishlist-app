@@ -40,6 +40,8 @@ const itemsList = document.getElementById("items-list");
 const wishlistFooter = document.getElementById("wishlist-footer");
 const noWishlistMessage = document.getElementById("no-wishlist-message");
 
+const authFields = authForm.querySelectorAll(".field-group");
+
 let currentUser = null;
 let viewModel = {
   wishlist: null,
@@ -79,12 +81,22 @@ async function signIn() {
 
 async function signUp() {
   showAuthMessage("");
+
   try {
     await auth.createUserWithEmailAndPassword(
       authEmail.value.trim(),
       authPassword.value
     );
   } catch (error) {
+    if (error.code === "auth/email-already-in-use") {
+      authPassword.value = "";
+      showAuthMessage(
+        "This email already has an account. Enter its password, then select Sign in."
+      );
+      authPassword.focus();
+      return;
+    }
+
     showAuthMessage(error.message);
   }
 }
@@ -484,6 +496,14 @@ copyLinkBtn.addEventListener("click", handleCopyLink);
 auth.onAuthStateChanged(async (user) => {
   currentUser = user;
 
+  authFields.forEach((field) => {
+  field.classList.toggle("hidden", Boolean(user));
+});
+
+authMessage.textContent = user
+  ? `You’re signed in as ${user.email}.`
+  : "";
+  
   signedInControls.classList.toggle("hidden", !user);
   signInBtn.classList.toggle("hidden", Boolean(user));
   signUpBtn.classList.toggle("hidden", Boolean(user));
@@ -492,7 +512,7 @@ auth.onAuthStateChanged(async (user) => {
   authPassword.disabled = Boolean(user);
 
   authStatus.textContent = user ? `Signed in: ${user.email}` : "Not signed in";
-  showAuthMessage("");
+  
 
   await loadMyWishlists();
 
