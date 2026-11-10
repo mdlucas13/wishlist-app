@@ -124,8 +124,9 @@ function render() {
   }
 
   wishlist.items.forEach((item) => {
+    const visiblePurchased = isOwner ? false : item.purchased;
     const li = document.createElement("li");
-    li.className = "item-card" + (item.purchased ? " purchased" : "");
+    li.className = "item-card" + (visiblePurchased ? " purchased" : "");
     li.dataset.itemId = item.id;
 
     li.innerHTML = `
@@ -140,7 +141,7 @@ function render() {
       </div>
       <div class="item-main">
         <div class="item-title-row">
-          <p class="item-title">${item.title || "Untitled item"}</p>
+           <p class="item-title">${item.title || "Untitled item"}</p>
           ${
             item.price
               ? `<span class="item-price">${item.price}</span>`
@@ -154,7 +155,7 @@ function render() {
               : ""
           }
           <span class="item-status-pill">${
-            item.purchased ? "Purchased" : "Available"
+            visiblePurchased ? "Purchased" : "Available"
           }</span>
         </div>
       </div>
@@ -162,8 +163,8 @@ function render() {
     `;
 
     const actions = li.querySelector(".item-actions");
-
-    if (item.purchased) {
+ 
+    if (visiblePurchased) {
       const purchaserLabel = document.createElement("div");
       purchaserLabel.className = "item-purchased-label";
       purchaserLabel.textContent = "Marked as purchased";
@@ -236,17 +237,25 @@ function render() {
   const total = wishlist.items.length;
   const purchasedCount = wishlist.items.filter((i) => i.purchased).length;
   const remaining = total - purchasedCount;
-
+ 
   if (!total) {
     wishlistFooter.textContent = "";
     return;
   }
-
-  wishlistFooter.innerHTML = `
-    <span><strong>${remaining}</strong> still available</span>
-    <span aria-hidden="true">·</span>
-    <span>${purchasedCount} purchased</span>
-  `;
+ 
+  if (isOwner) {
+    wishlistFooter.innerHTML = `
+      <span><strong>${remaining}</strong> still available</span>
+      <span aria-hidden="true">·</span>
+      <span>Purchased status is hidden from the owner</span>
+    `;
+  } else {
+    wishlistFooter.innerHTML = `
+      <span><strong>${remaining}</strong> still available</span>
+      <span aria-hidden="true">·</span>
+      <span>${purchasedCount} purchased</span>
+    `;
+  }
 }
 
 // SECTION: Mutations
