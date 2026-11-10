@@ -523,6 +523,7 @@ input:focus-visible {
   background: radial-gradient(circle at top right, rgba(79, 70, 229, 0.09), transparent 50%);
   opacity: 0;
   transition: opacity var(--transition-med);
+  pointer-events: none;
 }
 
 .item-card:hover::before {
