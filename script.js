@@ -90,16 +90,33 @@ async function signUp() {
 }
 
 async function loadClaims(wishlistId) {
-  const snapshot = await wishlistsRef
+  let claimsUnsubscribe = null;
+
+function watchClaims(wishlistId) {
+  if (claimsUnsubscribe) {
+    claimsUnsubscribe();
+  }
+
+  claimsUnsubscribe = wishlistsRef
     .doc(wishlistId)
     .collection("claims")
-    .get();
+    .onSnapshot(
+      (snapshot) => {
+        if (viewModel.wishlist?.id !== wishlistId) return;
 
-  const claims = {};
-  snapshot.forEach((doc) => {
-    claims[doc.id] = doc.data();
-  });
-  return claims;
+        const claims = {};
+        snapshot.forEach((doc) => {
+          claims[doc.id] = doc.data();
+        });
+
+        viewModel = { ...viewModel, claims };
+        render();
+      },
+      (error) => {
+        console.error("Could not listen for item claims:", error);
+      }
+    );
+}
 }
 
 async function loadWishlistById(id, updateUrl = false) {
@@ -113,12 +130,11 @@ async function loadWishlistById(id, updateUrl = false) {
     }
 
     const wishlist = doc.data();
-    const claims = await loadClaims(id);
 
     viewModel = {
       wishlist: { ...wishlist, items: wishlist.items || [] },
       isOwner: Boolean(currentUser && wishlist.ownerUid === currentUser.uid),
-      claims
+      claims: {}
     };
 
     if (updateUrl) {
@@ -126,6 +142,7 @@ async function loadWishlistById(id, updateUrl = false) {
     }
 
     render();
+    watchClaims(id);
   } catch (error) {
     console.error("Could not load wishlist:", error);
     alert(`Could not load wishlist: ${error.message}`);
@@ -237,7 +254,7 @@ function render() {
 
     const status = document.createElement("span");
     status.className = "item-status-pill";
-    status.textContent = isOwner ? "" : claimed ? "Claimed" : "Available";
+    status.textContent = isOwner ? "" : claimed ? "No longer needed" : "Available";
     meta.appendChild(status);
 
     main.append(titleRow, meta);
@@ -264,7 +281,7 @@ function render() {
     } else if (claimed) {
       const label = document.createElement("span");
       label.className = "item-purchased-label";
-      label.textContent = "Claimed";
+      label.textContent = "No longer needed";
       actions.appendChild(label);
     } else {
       const claimButton = document.createElement("button");
@@ -373,6 +390,7 @@ async function handleDeleteItem(itemId) {
 }
 
 async function claimItem(itemId) {
+  async function claimItem(itemId) {
   if (!currentUser) {
     alert("Sign in to claim an item.");
     return;
@@ -385,16 +403,24 @@ async function claimItem(itemId) {
     .doc(itemId);
 
   try {
-    await claimRef.set({
-      itemId,
-      claimedBy: currentUser.uid,
-      claimedAt: firebase.firestore.FieldValue.serverTimestamp()
+    await db.runTransaction(async (transaction) => {
+      const claimDoc = await transaction.get(claimRef);
+
+      if (claimDoc.exists) {
+        throw new Error("Someone has already claimed this item.");
+      }
+
+      transaction.set(claimRef, {
+        itemId,
+        claimedBy: currentUser.uid,
+        claimedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     });
-    await loadWishlistById(wishlistId);
   } catch (error) {
     console.error("Could not claim item:", error);
-    alert("That item may already have been claimed. Refresh the wishlist and try again.");
+    alert(`Could not claim item: ${error.message}`);
   }
+}
 }
 
 async function clearClaim(itemId) {
