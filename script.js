@@ -2,6 +2,7 @@
 // Wishlists are stored in Firebase Firestore by id so links work across devices.
 
 // Initialize Firebase (config values should be filled with your project's settings)
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyDfGgPJbp_r7u2pmCMBf0eh-P0m9ix1rbQ",
   authDomain: "wishlist-app-4dc57.firebaseapp.com",
