@@ -96,7 +96,7 @@ function render() {
     itemsList.innerHTML = "";
     itemsEmpty.classList.add("hidden");
     wishlistFooter.textContent = "";
-    noWishlistMessage.classList.remove("hidden");
+    noWishlistMessage.classList.toggle("hidden", !getWishlistIdFromUrl());
     addItemForm.classList.add("hidden");
     return;
   }
@@ -281,9 +281,16 @@ async function handleCreateOwner(event) {
     items: [],
   };
 
-  viewModel.isOwner = true;
-  await setWishlist(wishlist);
+  try {
+  await saveWishlistToFirestore(wishlist);
+
+  viewModel = { isOwner: true, wishlist };
   window.history.replaceState({}, "", buildShareLink(id));
+  render();
+} catch (error) {
+  console.error("Could not create wishlist:", error);
+  alert(`Could not create wishlist: ${error.message}`);
+}
 }
 
 
