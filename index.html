@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- SECTION: Meta -->
+    <meta charset="UTF-8" />
+    <title>Wishlink Registry</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="floating-shape shape-a" aria-hidden="true"></div>
+    <div class="floating-shape shape-b" aria-hidden="true"></div>
+
+    <main class="app gradient-mesh">
+      <!-- SECTION: Header -->
+      <header class="app-header">
+        <div class="header-text">
+          <h1 class="logo">Wishlink Registry</h1>
+          <p class="tagline">
+            Create a wishlist, share a simple link, and let friends claim gifts so
+            there are no duplicates.
+          </p>
+        </div>
+        <div class="header-pill" aria-label="App status">
+          <span class="dot"></span>
+          <span>Live preview · Local only</span>
+        </div>
+      </header>
+
+      <!-- SECTION: Layout -->
+      <section class="layout">
+        <!-- SECTION: Owner Panel -->
+        <section class="panel owner-panel" aria-label="Create or open a wishlist">
+          <h2>Manage a wishlist</h2>
+          <p class="panel-help">
+            Start a new wishlist for yourself or paste a link to revisit one
+            you created earlier.
+          </p>
+
+          <!-- Owner: Create wishlist -->
+          <form id="create-owner-form" class="card form-card" autocomplete="off">
+            <h3>Start a new wishlist</h3>
+            <div class="field-group">
+              <label for="owner-name">Your name</label>
+              <input
+                id="owner-name"
+                name="ownerName"
+                type="text"
+                placeholder="e.g. Alex, Sam & Taylor"
+                required
+              />
+            </div>
+            <div class="field-group">
+              <label for="wishlist-title">Wishlist title</label>
+              <input
+                id="wishlist-title"
+                name="wishlistTitle"
+                type="text"
+                placeholder="Birthday 2025, New Apartment, Baby Shower"
+                required
+              />
+            </div>
+            <button type="submit" class="btn primary full-width">
+              Create wishlist
+            </button>
+          </form>
+
+          <!-- Owner: Open existing by link -->
+          <form id="open-link-form" class="card form-card secondary-form">
+            <h3>Open an existing wishlist</h3>
+            <div class="field-group">
+              <label for="open-link">Paste wishlist link</label>
+              <input
+                id="open-link"
+                name="openLink"
+                type="text"
+                placeholder="https://example.com?w=abc123"
+              />
+            </div>
+            <button type="submit" class="btn ghost full-width">
+              Open wishlist
+            </button>
+          </form>
+
+          <p class="note">
+            This demo stores wishlists in your browser only. To use it with
+            friends, keep the tab open or export the data.
+          </p>
+        </section>
+
+        <!-- SECTION: Wishlist Panel -->
+        <section class="panel wishlist-panel" aria-label="Wishlist editor and viewer">
+          <!-- Active wishlist header -->
+          <div id="active-wishlist-shell" class="card wishlist-shell hidden">
+            <header class="wishlist-header">
+              <div>
+                <p class="wishlist-owner" id="wishlist-owner-label"></p>
+                <h2 id="wishlist-title-label"></h2>
+              </div>
+              <div class="share-block">
+                <label for="share-link" class="share-label">Share this link</label>
+                <div class="share-input-row">
+                  <input
+                    id="share-link"
+                    class="share-input"
+                    type="text"
+                    readonly
+                    aria-describedby="share-help"
+                  />
+                  <button type="button" id="copy-link-btn" class="btn secondary">
+                    Copy
+                  </button>
+                </div>
+                <p id="share-help" class="share-help">
+                  Send this to friends or family. They can claim items as
+                  purchased.
+                </p>
+              </div>
+            </header>
+
+            <!-- Owner: Add item form (shown only in owner mode) -->
+            <form
+              id="add-item-form"
+              class="form-inline hidden"
+              aria-label="Add item to wishlist"
+            >
+              <div class="field-group compact">
+                <label for="item-title">Item</label>
+                <input
+                  id="item-title"
+                  name="title"
+                  type="text"
+                  placeholder="Noise‑cancelling headphones"
+                  required
+                />
+              </div>
+
+              <div class="field-group compact">
+                <label for="item-price">Price</label>
+                <input
+                  id="item-price"
+                  name="price"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="$199.99"
+                />
+              </div>
+
+              <div class="field-group compact">
+                <label for="item-link">Store link</label>
+                <input
+                  id="item-link"
+                  name="link"
+                  type="url"
+                  placeholder="https://..."
+                />
+              </div>
+
+              <div class="field-group compact">
+                <label for="item-image">Image URL</label>
+                <input
+                  id="item-image"
+                  name="image"
+                  type="url"
+                  placeholder="https://image.com/photo.jpg"
+                />
+              </div>
+
+              <button type="submit" class="btn primary add-btn">
+                Add item
+              </button>
+            </form>
+
+            <!-- Wishlist items list -->
+            <div id="items-empty" class="empty-state">
+              <h3>No items yet</h3>
+              <p>
+                Add a few ideas to your list — experiences, essentials, or
+                little luxuries.
+              </p>
+            </div>
+
+            <ul id="items-list" class="items-list" aria-live="polite"></ul>
+
+            <footer class="wishlist-footer" id="wishlist-footer" aria-live="polite"></footer>
+          </div>
+
+          <!-- Visitor view placeholder when accessed via link with no data -->
+          <div id="no-wishlist-message" class="card empty-link hidden">
+            <h2>Wishlist not found</h2>
+            <p>
+              The link you opened doesn’t match a wishlist stored in this
+              browser.
+            </p>
+            <p class="note">
+              In a real deployment this would load from a server. For this
+              project, wishlists only live in the browser where they were
+              created.
+            </p>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
