@@ -3,13 +3,13 @@
 
 // Initialize Firebase (config values should be filled with your project's settings)
 const firebaseConfig = {
-  // TODO: replace with your Firebase project's config
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyDfGgPJbp_r7u2pmCMBf0eh-P0m9ix1rbQ",
+  authDomain: "wishlist-app-4dc57.firebaseapp.com",
+  projectId: "wishlist-app-4dc57",
+  storageBucket: "wishlist-app-4dc57.firebasestorage.app",
+  messagingSenderId: "877035972393",
+  appId: "1:877035972393:web:83b0bfbe7a54f857717938",
+  measurementId: "G-SFH33ZGYRT"
 };
 
 /* global firebase */
