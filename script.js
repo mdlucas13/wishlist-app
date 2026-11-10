@@ -43,6 +43,8 @@ const noWishlistMessage = document.getElementById("no-wishlist-message");
 const authFields = authForm.querySelectorAll(".field-group");
 
 let currentUser = null;
+let claimsUnsubscribe = null;
+
 let viewModel = {
   wishlist: null,
   isOwner: false,
@@ -69,6 +71,7 @@ function showAuthMessage(message) {
 
 async function signIn() {
   showAuthMessage("");
+
   try {
     await auth.signInWithEmailAndPassword(
       authEmail.value.trim(),
@@ -101,13 +104,15 @@ async function signUp() {
   }
 }
 
-async function loadClaims(wishlistId) {
-  let claimsUnsubscribe = null;
-
-function watchClaims(wishlistId) {
+function stopWatchingClaims() {
   if (claimsUnsubscribe) {
     claimsUnsubscribe();
+    claimsUnsubscribe = null;
   }
+}
+
+function watchClaims(wishlistId) {
+  stopWatchingClaims();
 
   claimsUnsubscribe = wishlistsRef
     .doc(wishlistId)
@@ -129,9 +134,10 @@ function watchClaims(wishlistId) {
       }
     );
 }
-}
 
 async function loadWishlistById(id, updateUrl = false) {
+  stopWatchingClaims();
+
   try {
     const doc = await wishlistsRef.doc(id).get();
 
@@ -179,15 +185,18 @@ async function loadMyWishlists() {
     snapshot.forEach((doc) => {
       const wishlist = doc.data();
       const button = document.createElement("button");
+
       button.type = "button";
       button.className = "btn ghost full-width wishlist-select";
       button.textContent = wishlist.title || "Untitled wishlist";
       button.addEventListener("click", () => loadWishlistById(doc.id, true));
+
       myWishlists.appendChild(button);
     });
   } catch (error) {
     console.error("Could not load your wishlists:", error);
-    myWishlists.textContent = `Could not load your wishlists: ${error.message}`;
+    myWishlists.textContent =
+      `Could not load your wishlists: ${error.message}`;
   }
 }
 
@@ -206,6 +215,7 @@ function render() {
 
   noWishlistMessage.classList.add("hidden");
   wishlistShell.classList.remove("hidden");
+
   wishlistOwnerLabel.textContent = `${wishlist.ownerName}'s wishlist`;
   wishlistTitleLabel.textContent = wishlist.title || "Wishlist";
   shareInput.value = buildShareLink(wishlist.id);
@@ -217,10 +227,12 @@ function render() {
   wishlist.items.forEach((item) => {
     const claimed = Boolean(claims[item.id] || item.purchased);
     const li = document.createElement("li");
+
     li.className = `item-card${claimed && !isOwner ? " purchased" : ""}`;
 
     const media = document.createElement("div");
     media.className = "item-media";
+
     if (item.image) {
       const img = document.createElement("img");
       img.className = "item-image";
@@ -266,7 +278,11 @@ function render() {
 
     const status = document.createElement("span");
     status.className = "item-status-pill";
-    status.textContent = isOwner ? "" : claimed ? "No longer needed" : "Available";
+    status.textContent = isOwner
+      ? ""
+      : claimed
+        ? "No longer needed"
+        : "Available";
     meta.appendChild(status);
 
     main.append(titleRow, meta);
@@ -282,14 +298,14 @@ function render() {
       removeButton.addEventListener("click", () => handleDeleteItem(item.id));
       actions.appendChild(removeButton);
 
-      if (claims[item.id]) {
-        const availableButton = document.createElement("button");
-        availableButton.type = "button";
-        availableButton.className = "btn ghost small";
-        availableButton.textContent = "Mark available";
-        availableButton.addEventListener("click", () => clearClaim(item.id));
-        actions.appendChild(availableButton);
-      }
+      // This button appears for every item, so it doesn't reveal
+      // whether someone has claimed the item.
+      const resetButton = document.createElement("button");
+      resetButton.type = "button";
+      resetButton.className = "btn ghost small";
+      resetButton.textContent = "Reset claim";
+      resetButton.addEventListener("click", () => clearClaim(item.id));
+      actions.appendChild(resetButton);
     } else if (claimed) {
       const label = document.createElement("span");
       label.className = "item-purchased-label";
@@ -309,6 +325,7 @@ function render() {
   });
 
   const claimedCount = Object.keys(claims).length;
+
   wishlistFooter.textContent = isOwner
     ? `${wishlist.items.length} item(s). Claim status is hidden from you.`
     : `${Math.max(0, wishlist.items.length - claimedCount)} still available · ${claimedCount} claimed`;
@@ -325,6 +342,7 @@ async function handleCreateOwner(event) {
   const formData = new FormData(ownerForm);
   const ownerName = String(formData.get("ownerName") || "").trim();
   const title = String(formData.get("wishlistTitle") || "").trim();
+
   if (!ownerName || !title) return;
 
   const id = createId();
@@ -351,6 +369,7 @@ async function handleCreateOwner(event) {
 
 async function handleAddItem(event) {
   event.preventDefault();
+
   if (!viewModel.isOwner || !viewModel.wishlist) return;
 
   const data = new FormData(addItemForm);
@@ -391,9 +410,17 @@ async function handleDeleteItem(itemId) {
 
   try {
     await wishlistsRef.doc(id).set(next);
-    const claimRef = wishlistsRef.doc(id).collection("claims").doc(itemId);
+
+    const claimRef = wishlistsRef
+      .doc(id)
+      .collection("claims")
+      .doc(itemId);
+
     const claimDoc = await claimRef.get();
-    if (claimDoc.exists) await claimRef.delete();
+    if (claimDoc.exists) {
+      await claimRef.delete();
+    }
+
     await loadWishlistById(id);
   } catch (error) {
     console.error("Could not remove item:", error);
@@ -402,7 +429,6 @@ async function handleDeleteItem(itemId) {
 }
 
 async function claimItem(itemId) {
-  async function claimItem(itemId) {
   if (!currentUser) {
     alert("Sign in to claim an item.");
     return;
@@ -433,31 +459,57 @@ async function claimItem(itemId) {
     alert(`Could not claim item: ${error.message}`);
   }
 }
-}
 
 async function clearClaim(itemId) {
   if (!viewModel.isOwner || !viewModel.wishlist) return;
 
+  const wishlistId = viewModel.wishlist.id;
+
   try {
-    await wishlistsRef
-      .doc(viewModel.wishlist.id)
+    const claimRef = wishlistsRef
+      .doc(wishlistId)
       .collection("claims")
-      .doc(itemId)
-      .delete();
-    await loadWishlistById(viewModel.wishlist.id);
+      .doc(itemId);
+
+    const claimDoc = await claimRef.get();
+    if (claimDoc.exists) {
+      await claimRef.delete();
+    }
+
+    const hasOldPurchasedFlag = viewModel.wishlist.items.some(
+      (item) => item.id === itemId && item.purchased
+    );
+
+    if (hasOldPurchasedFlag) {
+      const updatedWishlist = {
+        ...viewModel.wishlist,
+        items: viewModel.wishlist.items.map((item) =>
+          item.id === itemId ? { ...item, purchased: false } : item
+        )
+      };
+
+      await wishlistsRef.doc(wishlistId).set(updatedWishlist);
+      await loadWishlistById(wishlistId);
+    }
   } catch (error) {
-    console.error("Could not clear claim:", error);
-    alert(`Could not mark item available: ${error.message}`);
+    console.error("Could not reset claim:", error);
+    alert(`Could not reset claim: ${error.message}`);
   }
 }
 
 async function handleOpenLink(event) {
   event.preventDefault();
+
   const raw = new FormData(openLinkForm).get("openLink");
+
   try {
     const url = new URL(String(raw));
     const id = url.searchParams.get("w");
-    if (!id) throw new Error("The link must include a wishlist ID.");
+
+    if (!id) {
+      throw new Error("The link must include a wishlist ID.");
+    }
+
     await loadWishlistById(id, true);
   } catch (error) {
     alert(error.message || "Enter a valid full wishlist link.");
@@ -466,10 +518,13 @@ async function handleOpenLink(event) {
 
 async function handleCopyLink() {
   if (!shareInput.value) return;
+
   try {
     await navigator.clipboard.writeText(shareInput.value);
     copyLinkBtn.textContent = "Copied";
-    setTimeout(() => (copyLinkBtn.textContent = "Copy"), 1500);
+    setTimeout(() => {
+      copyLinkBtn.textContent = "Copy";
+    }, 1500);
   } catch {
     shareInput.select();
     document.execCommand("copy");
@@ -497,29 +552,33 @@ auth.onAuthStateChanged(async (user) => {
   currentUser = user;
 
   authFields.forEach((field) => {
-  field.classList.toggle("hidden", Boolean(user));
-});
+    field.classList.toggle("hidden", Boolean(user));
+  });
 
-authMessage.textContent = user
-  ? `You’re signed in as ${user.email}.`
-  : "";
-  
+  authMessage.textContent = user
+    ? `You’re signed in as ${user.email}.`
+    : "";
+
   signedInControls.classList.toggle("hidden", !user);
   signInBtn.classList.toggle("hidden", Boolean(user));
   signUpBtn.classList.toggle("hidden", Boolean(user));
   signOutBtn.classList.toggle("hidden", !user);
+
   authEmail.disabled = Boolean(user);
   authPassword.disabled = Boolean(user);
 
-  authStatus.textContent = user ? `Signed in: ${user.email}` : "Not signed in";
-  
+  authStatus.textContent = user
+    ? `Signed in: ${user.email}`
+    : "Not signed in";
 
   await loadMyWishlists();
 
   const id = getWishlistIdFromUrl();
+
   if (id) {
     await loadWishlistById(id);
   } else {
+    stopWatchingClaims();
     viewModel = { wishlist: null, isOwner: false, claims: {} };
     render();
   }
