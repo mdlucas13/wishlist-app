@@ -18,16 +18,21 @@
             Create a wishlist, share a simple link, and let friends claim gifts.
           </p>
         </div>
-        <div class="header-pill" aria-label="App status">
-          <span class="dot"></span>
-          <span id="auth-status">Not signed in</span>
+        <div id="profile-menu-wrap" class="profile-menu-wrap hidden">
+          <button id="profile-button" class="profile-button" type="button" aria-label="Open account menu" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path></svg>
+          </button>
+          <div id="profile-menu" class="profile-menu hidden">
+            <button id="account-button" type="button">Account</button>
+            <button id="menu-sign-out-btn" type="button">Sign out</button>
+          </div>
         </div>
       </header>
 
-      <section class="layout">
-        <section class="panel owner-panel" aria-label="Manage wishlists">
-          <h2>Your account</h2>
-
+      <section id="signed-out-view" class="signed-out-view">
+        <section class="panel sign-in-panel" aria-label="Sign in">
+          <h2>Welcome back</h2>
+          <p class="note">Sign in or create an account to manage your wishlists.</p>
           <form id="auth-form" class="card form-card">
             <div class="field-group">
               <label for="auth-email">Email</label>
@@ -35,74 +40,76 @@
             </div>
             <div class="field-group">
               <label for="auth-password">Password</label>
-              <input
-                id="auth-password"
-                name="password"
-                type="password"
-                autocomplete="current-password"
-                minlength="6"
-                required
-              />
+              <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="6" required />
             </div>
             <div class="auth-buttons">
               <button type="submit" class="btn primary" id="sign-in-btn">Sign in</button>
-              <button type="button" class="btn ghost" id="sign-up-btn">Create account</button>
-              <button type="button" class="btn ghost hidden" id="sign-out-btn">Sign out</button>
             </div>
             <p id="auth-message" class="note" role="status"></p>
           </form>
+          <p class="auth-switch">Need an account? <button type="button" id="sign-up-btn" class="auth-create-link">Create one here</button></p>
+        </section>
+      </section>
 
-          <div id="signed-in-controls" class="hidden">
-            <h2>My wishlists</h2>
-            <div id="my-wishlists" class="card"></div>
+      <section id="signed-in-view" class="layout hidden">
+        <section class="panel owner-panel" aria-label="Manage wishlists">
+          <div id="wishlist-management">
+            <nav class="wishlist-tabs" role="tablist" aria-label="Wishlist actions">
+              <button class="wishlist-tab active" id="tab-my-wishlists" type="button" role="tab" aria-selected="true" aria-controls="panel-my-wishlists" data-wishlist-tab="my-wishlists">My wishlists</button>
+              <button class="wishlist-tab" id="tab-create-wishlist" type="button" role="tab" aria-selected="false" aria-controls="panel-create-wishlist" data-wishlist-tab="create-wishlist">Create</button>
+              <button class="wishlist-tab" id="tab-open-wishlist" type="button" role="tab" aria-selected="false" aria-controls="panel-open-wishlist" data-wishlist-tab="open-wishlist">Open shared</button>
+            </nav>
 
-            <form id="create-owner-form" class="card form-card">
-              <h3>Start a new wishlist</h3>
-              <div class="field-group">
-                <label for="owner-name">Your name</label>
-                <input
-                  id="owner-name"
-                  name="ownerName"
-                  type="text"
-                  placeholder="e.g. Kenzie"
-                  required
-                />
-              </div>
-              <div class="field-group">
-                <label for="wishlist-title">Wishlist title</label>
-                <input
-                  id="wishlist-title"
-                  name="wishlistTitle"
-                  type="text"
-                  placeholder="e.g. Xmas, Birthday"
-                  required
-                />
-              </div>
-              <button type="submit" class="btn primary full-width">
-                Create wishlist
-              </button>
-            </form>
+            <section id="panel-my-wishlists" class="wishlist-tab-panel" role="tabpanel" aria-labelledby="tab-my-wishlists">
+              <h2>My wishlists</h2>
+              <div id="my-wishlists" class="card"></div>
+            </section>
+
+            <section id="panel-create-wishlist" class="wishlist-tab-panel hidden" role="tabpanel" aria-labelledby="tab-create-wishlist" hidden>
+              <h2>Start a new wishlist</h2>
+              <form id="create-owner-form" class="card form-card">
+                <div class="field-group">
+                  <label for="owner-name">Your name</label>
+                  <input id="owner-name" name="ownerName" type="text" placeholder="e.g. Kenzie" required />
+                </div>
+                <div class="field-group">
+                  <label for="wishlist-title">Wishlist title</label>
+                  <input id="wishlist-title" name="wishlistTitle" type="text" placeholder="e.g. Xmas, Birthday" required />
+                </div>
+                <button type="submit" class="btn primary full-width">Create wishlist</button>
+              </form>
+            </section>
+
+            <section id="panel-open-wishlist" class="wishlist-tab-panel hidden" role="tabpanel" aria-labelledby="tab-open-wishlist" hidden>
+              <h2>Open a shared wishlist</h2>
+              <form id="open-link-form" class="card form-card secondary-form">
+                <div class="field-group">
+                  <label for="open-link">Paste wishlist link</label>
+                  <input id="open-link" name="openLink" type="url" placeholder="https://example.com?w=abc123" required />
+                </div>
+                <button type="submit" class="btn primary full-width">Open wishlist</button>
+              </form>
+            </section>
           </div>
 
-          <form id="open-link-form" class="card form-card secondary-form">
-            <h3>Open a shared wishlist</h3>
-            <div class="field-group">
-              <label for="open-link">Paste wishlist link</label>
-              <input
-                id="open-link"
-                name="openLink"
-                type="url"
-                placeholder="https://example.com?w=abc123"
-                required
-              />
+          <section id="account-view" class="hidden">
+            <h2>Your account</h2>
+            <div class="card form-card">
+              <div class="field-group">
+                <label for="account-email">Email</label>
+                <input id="account-email" type="email" readonly />
+              </div>
+              <div class="field-group">
+                <label for="account-password">Password</label>
+                <input id="account-password" type="text" value="••••••••••••" readonly />
+              </div>
+              <button id="change-password-btn" type="button" class="btn primary">Send password reset email</button>
+              <p id="account-message" class="note" role="status"></p>
             </div>
-            <button type="submit" class="btn primary full-width">Open wishlist</button>
-          </form>
+            <button id="back-to-wishlists-btn" type="button" class="btn ghost">Back to wishlists</button>
+          </section>
 
-          <p class="note">
-            Sign in to create and manage your wishlists. Friends can view shared
-            links and sign in to claim gifts.
-          </p>
+          <p id="wishlist-help-note" class="note">Friends can view shared links and sign in to claim gifts.</p>
         </section>
 
         <section class="panel wishlist-panel" aria-label="Wishlist">
@@ -146,8 +153,8 @@
                 <input id="item-link" name="link" type="url" />
               </div>
               <div class="field-group compact">
-                <label for="item-image">Image URL</label>
-                <input id="item-image" name="image" type="url" />
+                <label for="item-image-file">Item photo</label>
+                <input id="item-image-file" name="imageFile" type="file" accept="image/*" />
               </div>
               <button type="submit" class="btn primary add-btn">Add item</button>
             </form>
@@ -171,6 +178,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
