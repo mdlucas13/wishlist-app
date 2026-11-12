@@ -326,7 +326,7 @@ function render() {
       const claimButton = document.createElement("button");
       claimButton.type = "button";
       claimButton.className = "btn primary small";
-      claimButton.textContent = "I purchased this";
+      claimButton.textContent = "Purchase this";
       claimButton.addEventListener("click", () => claimItem(item.id));
       actions.appendChild(claimButton);
     }
