@@ -13,7 +13,6 @@ firebase.initializeApp(firebaseConfig);
 
 const auth = firebase.auth();
 const db = firebase.firestore();
-const storage = firebase.storage();
 const wishlistsRef = db.collection("wishlists");
 
 const authForm = document.getElementById("auth-form");
@@ -42,6 +41,11 @@ const myWishlists = document.getElementById("my-wishlists");
 const ownerForm = document.getElementById("create-owner-form");
 const openLinkForm = document.getElementById("open-link-form");
 const addItemForm = document.getElementById("add-item-form");
+const addItemMessage = document.getElementById("add-item-message");
+const itemPriceInput = document.getElementById("item-price");
+itemPriceInput.addEventListener("input", () => {
+  itemPriceInput.value = itemPriceInput.value.replace(/\$/g, "");
+});
 
 const wishlistShell = document.getElementById("active-wishlist-shell");
 const wishlistOwnerLabel = document.getElementById("wishlist-owner-label");
@@ -49,6 +53,8 @@ const wishlistTitleLabel = document.getElementById("wishlist-title-label");
 const shareInput = document.getElementById("share-link");
 const copyLinkBtn = document.getElementById("copy-link-btn");
 const itemsEmpty = document.getElementById("items-empty");
+const itemsEmptyTitle = document.getElementById("items-empty-title");
+const itemsEmptyCopy = document.getElementById("items-empty-copy");
 const itemsList = document.getElementById("items-list");
 const wishlistFooter = document.getElementById("wishlist-footer");
 const noWishlistMessage = document.getElementById("no-wishlist-message");
@@ -186,7 +192,10 @@ async function loadWishlistById(id, updateUrl = false) {
     };
 
     if (updateUrl) {
-      window.history.replaceState({}, "", buildShareLink(id));
+      const nextUrl = buildShareLink(id);
+      if (nextUrl !== window.location.href) {
+        window.history.pushState({}, "", nextUrl);
+      }
     }
 
     render();
@@ -208,7 +217,7 @@ async function loadMyWishlists() {
       .get();
 
     if (snapshot.empty) {
-      myWishlists.textContent = "You haven’t created any wishlists yet.";
+      myWishlists.textContent = "No wishlists yet. Choose Create above to start your first.";
       return;
     }
 
@@ -218,6 +227,8 @@ async function loadMyWishlists() {
 
       button.type = "button";
       button.className = "btn ghost full-width wishlist-select";
+      button.dataset.wishlistId = doc.id;
+      button.setAttribute("aria-pressed", "false");
       button.textContent = wishlist.title || "Untitled wishlist";
       button.addEventListener("click", () => loadWishlistById(doc.id, true));
 
@@ -232,6 +243,12 @@ async function loadMyWishlists() {
 
 function render() {
   const { wishlist, isOwner, claims } = viewModel;
+
+  myWishlists.querySelectorAll(".wishlist-select").forEach((button) => {
+    const selected = button.dataset.wishlistId === wishlist?.id;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
 
   if (!wishlist) {
     wishlistShell.classList.add("hidden");
@@ -253,27 +270,18 @@ function render() {
 
   itemsList.replaceChildren();
   itemsEmpty.classList.toggle("hidden", wishlist.items.length > 0);
+  if (!wishlist.items.length) {
+    itemsEmptyTitle.textContent = isOwner ? "Your list is ready for ideas" : "Nothing on this list yet";
+    itemsEmptyCopy.textContent = isOwner
+      ? "Add the first one using the form above."
+      : "Check back later for gift ideas.";
+  }
 
   wishlist.items.forEach((item) => {
     const claimed = Boolean(claims[item.id] || item.purchased);
     const li = document.createElement("li");
 
     li.className = `item-card${claimed && !isOwner ? " purchased" : ""}`;
-
-    const media = document.createElement("div");
-    media.className = "item-media";
-
-    if (item.image) {
-      const img = document.createElement("img");
-      img.className = "item-image";
-      img.src = item.image;
-      img.alt = item.title || "Wishlist item";
-      media.appendChild(img);
-    } else {
-      const placeholder = document.createElement("div");
-      placeholder.className = "item-placeholder";
-      media.appendChild(placeholder);
-    }
 
     const main = document.createElement("div");
     main.className = "item-main";
@@ -289,8 +297,16 @@ function render() {
     if (item.price) {
       const price = document.createElement("span");
       price.className = "item-price";
-      price.textContent = item.price;
+      const priceText = String(item.price).trim();
+      price.textContent = priceText.startsWith("$") ? priceText : `$${priceText}`;
       titleRow.appendChild(price);
+    }
+
+    if (item.description) {
+      const description = document.createElement("p");
+      description.className = "item-description";
+      description.textContent = item.description;
+      main.appendChild(description);
     }
 
     const meta = document.createElement("div");
@@ -306,16 +322,15 @@ function render() {
       meta.appendChild(link);
     }
 
-    const status = document.createElement("span");
-    status.className = "item-status-pill";
-    status.textContent = isOwner
-      ? ""
-      : claimed
-        ? "No longer needed"
-        : "Available";
-    meta.appendChild(status);
+    if (!isOwner) {
+      const status = document.createElement("span");
+      status.className = "item-status-pill";
+      status.textContent = claimed ? "No longer needed" : "Available";
+      meta.appendChild(status);
+    }
 
-    main.append(titleRow, meta);
+    main.prepend(titleRow);
+    main.appendChild(meta);
 
     const actions = document.createElement("div");
     actions.className = "item-actions";
@@ -360,7 +375,7 @@ function render() {
       actions.appendChild(claimButton);
     }
 
-    li.append(media, main, actions);
+    li.append(main, actions);
     itemsList.appendChild(li);
   });
 
@@ -380,23 +395,42 @@ function showItemEditor(itemCard, item) {
 
   const addField = (labelText, name, type, value = "") => {
     const group = document.createElement("div");
-    group.className = "field-group compact";
+    group.className = `field-group compact${name === "description" ? " description-field" : ""}`;
     const label = document.createElement("label");
     label.textContent = labelText;
-    const input = document.createElement("input");
+    const input = type === "textarea"
+      ? document.createElement("textarea")
+      : document.createElement("input");
     input.name = name;
-    input.type = type;
-    input.value = value;
-    if (name === "imageFile") input.accept = "image/*";
+    if (type !== "textarea") input.type = type;
+    input.value = name === "price"
+      ? String(value).replace(/\$/g, "").trim()
+      : value;
+    if (name === "price") {
+      input.inputMode = "decimal";
+      input.addEventListener("input", () => {
+        input.value = input.value.replace(/\$/g, "");
+      });
+    }
     if (name === "title") input.required = true;
-    group.append(label, input);
+    if (name === "price") {
+      const moneyInput = document.createElement("div");
+      moneyInput.className = "money-input";
+      const currency = document.createElement("span");
+      currency.textContent = "$";
+      currency.setAttribute("aria-hidden", "true");
+      moneyInput.append(currency, input);
+      group.append(label, moneyInput);
+    } else {
+      group.append(label, input);
+    }
     form.appendChild(group);
   };
 
   addField("Item", "title", "text", item.title || "");
   addField("Price", "price", "text", item.price || "");
   addField("Store link", "link", "url", item.link || "");
-  addField("Replace photo (optional)", "imageFile", "file");
+  addField("Description", "description", "textarea", item.description || "");
 
   const actions = document.createElement("div");
   actions.className = "item-edit-actions";
@@ -415,18 +449,6 @@ function showItemEditor(itemCard, item) {
   itemCard.appendChild(form);
 }
 
-async function uploadWishlistImage(file, wishlistId, itemId) {
-  if (!file) return null;
-  if (!file.type.startsWith("image/")) throw new Error("Choose an image file.");
-  if (file.size > 5 * 1024 * 1024) throw new Error("Choose an image smaller than 5 MB.");
-
-  const imageRef = storage.ref().child(
-    `wishlist-images/${currentUser.uid}/${wishlistId}/${itemId}`
-  );
-  const snapshot = await imageRef.put(file);
-  return snapshot.ref.getDownloadURL();
-}
-
 async function handleEditItem(event) {
   event.preventDefault();
   if (!viewModel.isOwner || !viewModel.wishlist) return;
@@ -442,16 +464,12 @@ async function handleEditItem(event) {
   saveButton.textContent = "Saving…";
 
   try {
-    const imageFile = data.get("imageFile");
-    const image = imageFile?.size
-      ? await uploadWishlistImage(imageFile, viewModel.wishlist.id, itemId)
-      : oldItem.image;
     const updatedItem = {
       ...oldItem,
       title: String(data.get("title") || "").trim(),
       price: String(data.get("price") || "").trim(),
       link: String(data.get("link") || "").trim(),
-      image
+      description: String(data.get("description") || "").trim()
     };
     const updatedWishlist = {
       ...viewModel.wishlist,
@@ -494,7 +512,7 @@ async function handleCreateOwner(event) {
 
   try {
     await wishlistsRef.doc(id).set(wishlist);
-    window.history.replaceState({}, "", buildShareLink(id));
+    window.history.pushState({}, "", buildShareLink(id));
     await loadMyWishlists();
     await loadWishlistById(id);
     ownerForm.reset();
@@ -512,21 +530,18 @@ async function handleAddItem(event) {
 
   const data = new FormData(addItemForm);
   const itemId = createId();
-  const imageFile = data.get("imageFile");
   const addButton = addItemForm.querySelector('button[type="submit"]');
+  addItemMessage.textContent = "";
   addButton.disabled = true;
-  addButton.textContent = "Adding…";
+  addButton.textContent = "Saving…";
 
   try {
-    const image = imageFile?.size
-      ? await uploadWishlistImage(imageFile, viewModel.wishlist.id, itemId)
-      : "";
     const item = {
       id: itemId,
       title: String(data.get("title") || "").trim(),
       price: String(data.get("price") || "").trim(),
       link: String(data.get("link") || "").trim(),
-      image
+      description: String(data.get("description") || "").trim()
     };
     if (!item.title) return;
 
@@ -536,10 +551,13 @@ async function handleAddItem(event) {
     };
     await wishlistsRef.doc(next.id).set(next);
     addItemForm.reset();
-    await loadWishlistById(next.id);
+    viewModel = { ...viewModel, wishlist: next, isOwner: true };
+    render();
+    addItemMessage.textContent = "Item added to your wishlist.";
+    void loadWishlistById(next.id);
   } catch (error) {
     console.error("Could not add item:", error);
-    alert(`Could not add item: ${error.message}`);
+    addItemMessage.textContent = `Could not add item: ${error.message}`;
   } finally {
     addButton.disabled = false;
     addButton.textContent = "Add item";
@@ -710,6 +728,18 @@ ownerForm.addEventListener("submit", handleCreateOwner);
 openLinkForm.addEventListener("submit", handleOpenLink);
 addItemForm.addEventListener("submit", handleAddItem);
 copyLinkBtn.addEventListener("click", handleCopyLink);
+
+window.addEventListener("popstate", () => {
+  const id = getWishlistIdFromUrl();
+  if (id) {
+    loadWishlistById(id);
+    return;
+  }
+
+  stopWatchingClaims();
+  viewModel = { wishlist: null, isOwner: false, claims: {} };
+  render();
+});
 
 auth.onAuthStateChanged(async (user) => {
   currentUser = user;

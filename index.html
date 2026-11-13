@@ -2,9 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Wishlink Registry</title>
+    <title>Wishworthy — wish lists for every occasion</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=20261113-3" />
   </head>
   <body>
     <div class="floating-shape shape-a" aria-hidden="true"></div>
@@ -12,11 +12,16 @@
 
     <main class="app gradient-mesh">
       <header class="app-header">
-        <div class="header-text">
-          <h1 class="logo">Wishlink Registry</h1>
-          <p class="tagline">
-            Create a wishlist, share a simple link, and let friends claim gifts.
-          </p>
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><path d="M16 3.5 19 12l8.5 3-8.5 3-3 8.5L13 18l-8.5-3 8.5-3 3-8.5Z"></path><circle cx="25.5" cy="6.5" r="1.5"></circle></svg>
+          </span>
+          <div class="header-text">
+            <h1 class="logo">Wishworthy</h1>
+            <p class="tagline">
+              Create a wish list, share one link, and let friends claim gifts to avoid duplicates.
+            </p>
+          </div>
         </div>
         <div id="profile-menu-wrap" class="profile-menu-wrap hidden">
           <button id="profile-button" class="profile-button" type="button" aria-label="Open account menu" aria-expanded="false">
@@ -31,7 +36,7 @@
 
       <section id="signed-out-view" class="signed-out-view">
         <section class="panel sign-in-panel" aria-label="Sign in">
-          <h2>Welcome back</h2>
+          <h2>Welcome to Wishworthy</h2>
           <p class="note">Sign in or create an account to manage your wishlists.</p>
           <form id="auth-form" class="card form-card">
             <div class="field-group">
@@ -146,22 +151,26 @@
               </div>
               <div class="field-group compact">
                 <label for="item-price">Price</label>
-                <input id="item-price" name="price" type="text" inputmode="decimal" />
+                <div class="money-input">
+                  <span aria-hidden="true">$</span>
+                  <input id="item-price" name="price" type="text" inputmode="decimal" />
+                </div>
               </div>
               <div class="field-group compact">
                 <label for="item-link">Store link</label>
                 <input id="item-link" name="link" type="url" />
               </div>
-              <div class="field-group compact">
-                <label for="item-image-file">Item photo</label>
-                <input id="item-image-file" name="imageFile" type="file" accept="image/*" />
+              <div class="field-group compact description-field">
+                <label for="item-description">Description</label>
+                <textarea id="item-description" name="description" rows="2" placeholder="Add a few details"></textarea>
               </div>
               <button type="submit" class="btn primary add-btn">Add item</button>
             </form>
+            <p id="add-item-message" class="note" role="status"></p>
 
             <div id="items-empty" class="empty-state">
-              <h3>No items yet</h3>
-              <p>Add a few ideas to your list.</p>
+              <h3 id="items-empty-title">Your list is ready for ideas</h3>
+              <p id="items-empty-copy">Add the first one using the form above.</p>
             </div>
             <ul id="items-list" class="items-list" aria-live="polite"></ul>
             <footer id="wishlist-footer" class="wishlist-footer" aria-live="polite"></footer>
@@ -178,7 +187,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <script src="script.js"></script>
+    <script src="script.js?v=20261113-3"></script>
   </body>
 </html>
