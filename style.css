@@ -779,8 +779,10 @@ input:focus-visible {
 
 .item-title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
+  row-gap: 4px;
   margin-bottom: 2px;
 }
 

@@ -62,6 +62,7 @@ const noWishlistMessage = document.getElementById("no-wishlist-message");
 let currentUser = null;
 let claimsUnsubscribe = null;
 let myClaimsUnsubscribe = null;
+const activeWishlistSessionKey = "wishlist.activeSession";
 
 let viewModel = {
   wishlist: null,
@@ -100,6 +101,12 @@ function buildShareLink(id) {
   const url = new URL(window.location.href);
   url.searchParams.set("w", id);
   return url.toString();
+}
+
+function clearWishlistIdFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("w");
+  window.history.replaceState({}, "", url);
 }
 
 function showAuthMessage(message) {
@@ -263,6 +270,13 @@ async function loadWishlistById(id, updateUrl = false) {
       myClaims: {}
     };
 
+    if (currentUser) {
+      sessionStorage.setItem(activeWishlistSessionKey, JSON.stringify({
+        userUid: currentUser.uid,
+        wishlistId: id
+      }));
+    }
+
     if (updateUrl) {
       const nextUrl = buildShareLink(id);
       if (nextUrl !== window.location.href) {
@@ -374,6 +388,18 @@ function render() {
       titleRow.appendChild(price);
     }
 
+    if (isOwner && (item.ownerStatus || item.purchased)) {
+      const status = document.createElement("span");
+      status.className = "item-status-pill";
+      status.textContent = item.ownerStatus === "bought" ? "Bought" : "No longer needed";
+      titleRow.appendChild(status);
+    } else if (!isOwner && claimed) {
+      const status = document.createElement("span");
+      status.className = "item-purchased-label";
+      status.textContent = "No longer needed";
+      titleRow.appendChild(status);
+    }
+
     if (item.description) {
       const description = document.createElement("p");
       description.className = "item-description";
@@ -394,10 +420,10 @@ function render() {
       meta.appendChild(link);
     }
 
-    if (!isOwner) {
+    if (!isOwner && !claimed) {
       const status = document.createElement("span");
       status.className = "item-status-pill";
-      status.textContent = claimed ? "No longer needed" : "Available";
+      status.textContent = "Available";
       meta.appendChild(status);
     }
 
@@ -408,13 +434,6 @@ function render() {
     actions.className = "item-actions";
 
     if (isOwner) {
-      if (item.ownerStatus || item.purchased) {
-        const status = document.createElement("span");
-        status.className = "item-status-pill";
-        status.textContent = item.ownerStatus === "bought" ? "Bought" : "No longer needed";
-        meta.appendChild(status);
-      }
-
       const editButton = document.createElement("button");
       editButton.type = "button";
       editButton.className = "btn ghost small";
@@ -455,11 +474,6 @@ function render() {
       actions.appendChild(statusControls);
 
     } else if (claimed) {
-      const label = document.createElement("span");
-      label.className = "item-purchased-label";
-      label.textContent = "No longer needed";
-      actions.appendChild(label);
-
       if (!item.ownerStatus && currentUser && myClaims[item.id]) {
         const undoButton = document.createElement("button");
         undoButton.type = "button";
@@ -906,11 +920,33 @@ window.addEventListener("popstate", () => {
   }
 
   stopWatchingClaims();
+  sessionStorage.removeItem(activeWishlistSessionKey);
   viewModel = { wishlist: null, isOwner: false, claims: {} };
   render();
 });
 
 auth.onAuthStateChanged(async (user) => {
+  const currentWishlistId = getWishlistIdFromUrl();
+  let activeWishlistSession = null;
+  try {
+    activeWishlistSession = JSON.parse(sessionStorage.getItem(activeWishlistSessionKey) || "null");
+  } catch {
+    sessionStorage.removeItem(activeWishlistSessionKey);
+  }
+
+  const accountChangedOnSameList = Boolean(
+    currentWishlistId && activeWishlistSession?.wishlistId === currentWishlistId &&
+    activeWishlistSession.userUid !== user?.uid
+  );
+  if (accountChangedOnSameList) {
+    clearWishlistIdFromUrl();
+    stopWatchingClaims();
+    viewModel = { wishlist: null, isOwner: false, claims: {}, myClaims: {} };
+  }
+  if (!user || accountChangedOnSameList) {
+    sessionStorage.removeItem(activeWishlistSessionKey);
+  }
+
   currentUser = user;
   signedOutView.classList.toggle("hidden", Boolean(user));
   signedInView.classList.toggle("hidden", !user);
