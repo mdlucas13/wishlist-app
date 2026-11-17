@@ -161,6 +161,11 @@ p {
   color: var(--color-text-muted);
 }
 
+#auth-message.auth-error {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
 /* SECTION: Header */
 .app-header {
   display: flex;
@@ -869,24 +874,28 @@ input:focus-visible {
   color: #6b7280;
 }
 
-.item-card.purchased {
+.item-card.off-list {
   background: #f8f7fa;
   border-style: dashed;
+  border-color: #c8c2d7;
 }
 
-.item-card.purchased .item-title,
-.item-card.purchased .item-price,
-.item-card.purchased .item-link {
+.item-card.off-list .item-title,
+.item-card.off-list .item-price,
+.item-card.off-list .item-link {
   color: #6b7280;
 }
 
-.item-card.purchased .item-title {
+.item-card.off-list .item-title {
   text-decoration: line-through;
 }
 
-.item-card.purchased .item-status-pill {
+.item-card.off-list .item-status-pill {
   border-color: rgba(148, 163, 184, 0.9);
-  background: rgba(148, 163, 184, 0.08);
+  background: #ece9f2;
+  color: #484254;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 /* Responsive tweaks */

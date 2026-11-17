@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <title>Wishworthy — wish lists for every occasion</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="style.css?v=20261116-1" />
+    <link rel="stylesheet" href="style.css?v=20261117-1" />
   </head>
   <body>
     <div class="floating-shape shape-a" aria-hidden="true"></div>
@@ -39,6 +39,16 @@
           <h2>Welcome to Wishworthy</h2>
           <p class="note">Sign in or create an account to manage your wishlists.</p>
           <form id="auth-form" class="card form-card">
+            <div id="auth-name-fields" class="hidden">
+              <div class="field-group">
+                <label for="auth-first-name">First name</label>
+                <input id="auth-first-name" name="given-name" type="text" autocomplete="given-name" />
+              </div>
+              <div class="field-group">
+                <label for="auth-last-name">Last name</label>
+                <input id="auth-last-name" name="family-name" type="text" autocomplete="family-name" />
+              </div>
+            </div>
             <div class="field-group">
               <label for="auth-email">Email</label>
               <input id="auth-email" name="email" type="email" autocomplete="email" required />
@@ -52,7 +62,7 @@
             </div>
             <p id="auth-message" class="note" role="status"></p>
           </form>
-          <p class="auth-switch">Need an account? <button type="button" id="sign-up-btn" class="auth-create-link">Create one here</button></p>
+          <p class="auth-switch"><span id="auth-switch-copy">Need an account?</span> <button type="button" id="sign-up-btn" class="auth-create-link">Create account</button></p>
         </section>
       </section>
 
@@ -99,18 +109,28 @@
 
           <section id="account-view" class="hidden">
             <h2>Your account</h2>
-            <div class="card form-card">
+            <form id="account-form" class="card form-card">
+              <div class="field-group">
+                <label for="account-first-name">First name</label>
+                <input id="account-first-name" type="text" autocomplete="given-name" required />
+              </div>
+              <div class="field-group">
+                <label for="account-last-name">Last name</label>
+                <input id="account-last-name" type="text" autocomplete="family-name" required />
+              </div>
               <div class="field-group">
                 <label for="account-email">Email</label>
-                <input id="account-email" type="email" readonly />
+                <input id="account-email" type="email" autocomplete="email" required />
               </div>
               <div class="field-group">
                 <label for="account-password">Password</label>
-                <input id="account-password" type="text" value="••••••••••••" readonly />
+                <input id="account-password" type="password" autocomplete="new-password" minlength="6" placeholder="Enter a new password to change it" />
               </div>
-              <button id="change-password-btn" type="button" class="btn primary">Send password reset email</button>
+              <button type="submit" class="btn primary">Save account</button>
+              <button id="change-password-btn" type="button" class="btn ghost">Send "Password Reset" email</button>
               <p id="account-message" class="note" role="status"></p>
-            </div>
+            </form>
+            <p class="note">Password reset sends an email with a link to choose a new password.</p>
             <button id="back-to-wishlists-btn" type="button" class="btn ghost">Back to wishlists</button>
           </section>
 
@@ -166,6 +186,7 @@
               </div>
               <button type="submit" class="btn primary add-btn">Add item</button>
             </form>
+            <p id="owner-item-help" class="note hidden">If this wishlist isn’t shared, you can mark items no longer needed yourself. Visitors can still claim available items as usual.</p>
             <p id="add-item-message" class="note" role="status"></p>
 
             <div id="items-empty" class="empty-state">
@@ -187,6 +208,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="script.js?v=20261116-1"></script>
+    <script src="script.js?v=20261117-1"></script>
   </body>
 </html>

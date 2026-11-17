@@ -21,6 +21,10 @@ const authPassword = document.getElementById("auth-password");
 const authMessage = document.getElementById("auth-message");
 const signInBtn = document.getElementById("sign-in-btn");
 const signUpBtn = document.getElementById("sign-up-btn");
+const authNameFields = document.getElementById("auth-name-fields");
+const authFirstName = document.getElementById("auth-first-name");
+const authLastName = document.getElementById("auth-last-name");
+const authSwitchCopy = document.getElementById("auth-switch-copy");
 const signedOutView = document.getElementById("signed-out-view");
 const signedInView = document.getElementById("signed-in-view");
 const profileMenuWrap = document.getElementById("profile-menu-wrap");
@@ -32,6 +36,10 @@ const wishlistManagement = document.getElementById("wishlist-management");
 const wishlistHelpNote = document.getElementById("wishlist-help-note");
 const accountView = document.getElementById("account-view");
 const accountEmail = document.getElementById("account-email");
+const accountFirstName = document.getElementById("account-first-name");
+const accountLastName = document.getElementById("account-last-name");
+const accountPassword = document.getElementById("account-password");
+const accountForm = document.getElementById("account-form");
 const accountMessage = document.getElementById("account-message");
 const changePasswordButton = document.getElementById("change-password-btn");
 const wishlistTabButtons = Array.from(document.querySelectorAll("[data-wishlist-tab]"));
@@ -43,6 +51,7 @@ const ownerForm = document.getElementById("create-owner-form");
 const openLinkForm = document.getElementById("open-link-form");
 const addItemForm = document.getElementById("add-item-form");
 const addItemMessage = document.getElementById("add-item-message");
+const ownerItemHelp = document.getElementById("owner-item-help");
 const itemPriceInput = document.getElementById("item-price");
 itemPriceInput.addEventListener("input", () => {
   itemPriceInput.value = itemPriceInput.value.replace(/\$/g, "");
@@ -61,6 +70,7 @@ const wishlistFooter = document.getElementById("wishlist-footer");
 const noWishlistMessage = document.getElementById("no-wishlist-message");
 
 let currentUser = null;
+let creatingAccount = false;
 let claimsUnsubscribe = null;
 let myClaimsUnsubscribe = null;
 const activeWishlistSessionKey = "wishlist.activeSession";
@@ -113,6 +123,14 @@ function clearWishlistIdFromUrl() {
 
 function showAuthMessage(message) {
   authMessage.textContent = message || "";
+  authMessage.classList.toggle("auth-error", Boolean(message));
+}
+
+function getAuthErrorMessage(error) {
+  if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(error.code)) {
+    return "Incorrect email and/or password. Please try again.";
+  }
+  return error.message || "Could not sign in. Please try again.";
 }
 
 async function signIn() {
@@ -124,7 +142,7 @@ async function signIn() {
       authPassword.value
     );
   } catch (error) {
-    showAuthMessage(error.message);
+    showAuthMessage(getAuthErrorMessage(error));
   }
 }
 
@@ -133,22 +151,38 @@ async function signUp() {
   if (!authForm.reportValidity()) return;
 
   try {
-    await auth.createUserWithEmailAndPassword(
+    const credential = await auth.createUserWithEmailAndPassword(
       authEmail.value.trim(),
       authPassword.value
     );
+    await credential.user.updateProfile({
+      displayName: `${authFirstName.value.trim()} ${authLastName.value.trim()}`.trim()
+    });
+    creatingAccount = false;
   } catch (error) {
     if (error.code === "auth/email-already-in-use") {
       authPassword.value = "";
       showAuthMessage(
-        "This email already has an account. Enter its password, then select Sign in."
+        "This email already has an account. Switch to sign in and enter its password."
       );
       authPassword.focus();
       return;
     }
 
-    showAuthMessage(error.message);
+      showAuthMessage(error.message);
   }
+}
+
+function setCreatingAccount(enabled) {
+  creatingAccount = enabled;
+  authNameFields.classList.toggle("hidden", !enabled);
+  authFirstName.required = enabled;
+  authLastName.required = enabled;
+  signInBtn.textContent = enabled ? "Create account" : "Sign in";
+  authSwitchCopy.textContent = enabled ? "Already have an account?" : "Need an account?";
+  signUpBtn.textContent = enabled ? "Sign in" : "Create account";
+  authForm.querySelector("input[name='password']").autocomplete = enabled ? "new-password" : "current-password";
+  showAuthMessage("");
 }
 
 function stopWatchingClaims() {
@@ -396,6 +430,7 @@ function render() {
   wishlistTitleLabel.textContent = wishlist.title || "Wishlist";
   shareInput.value = buildShareLink(wishlist.id);
   addItemForm.classList.toggle("hidden", !isOwner);
+  ownerItemHelp.classList.toggle("hidden", !isOwner);
 
   itemsList.replaceChildren();
   itemsEmpty.classList.toggle("hidden", wishlist.items.length > 0);
@@ -407,10 +442,12 @@ function render() {
   }
 
   wishlist.items.forEach((item) => {
-    const claimed = Boolean(claims[item.id] || item.purchased || item.ownerStatus);
+    const visitorClaim = Boolean(claims[item.id]);
+    const ownerMarkedOffList = Boolean(item.ownerStatus || item.purchased);
+    const offList = visitorClaim || ownerMarkedOffList;
     const li = document.createElement("li");
 
-    li.className = `item-card${claimed && !isOwner ? " purchased" : ""}`;
+    li.className = `item-card${offList ? " off-list" : ""}`;
 
     const main = document.createElement("div");
     main.className = "item-main";
@@ -431,14 +468,9 @@ function render() {
       titleRow.appendChild(price);
     }
 
-    if (isOwner && (item.ownerStatus || item.purchased)) {
+    if (offList) {
       const status = document.createElement("span");
       status.className = "item-status-pill";
-      status.textContent = item.ownerStatus === "bought" ? "Bought" : "No longer needed";
-      titleRow.appendChild(status);
-    } else if (!isOwner && claimed) {
-      const status = document.createElement("span");
-      status.className = "item-purchased-label";
       status.textContent = "No longer needed";
       titleRow.appendChild(status);
     }
@@ -463,7 +495,7 @@ function render() {
       meta.appendChild(link);
     }
 
-    if (!isOwner && !claimed) {
+    if (!isOwner && !offList) {
       const status = document.createElement("span");
       status.className = "item-status-pill";
       status.textContent = "Available";
@@ -502,22 +534,17 @@ function render() {
         availableButton.addEventListener("click", () => handleOwnerItemStatus(item.id, null));
         statusControls.appendChild(availableButton);
       } else {
-        [
-          { status: "bought", label: "Mark bought" },
-          { status: "not-needed", label: "No longer needed" }
-        ].forEach(({ status, label }) => {
-          const statusButton = document.createElement("button");
-          statusButton.type = "button";
-          statusButton.className = "btn ghost small";
-          statusButton.textContent = label;
-          statusButton.addEventListener("click", () => handleOwnerItemStatus(item.id, status));
-          statusControls.appendChild(statusButton);
-        });
+        const statusButton = document.createElement("button");
+        statusButton.type = "button";
+        statusButton.className = "btn ghost small";
+        statusButton.textContent = "Mark no longer needed";
+        statusButton.addEventListener("click", () => handleOwnerItemStatus(item.id, "not-needed"));
+        statusControls.appendChild(statusButton);
       }
       actions.appendChild(statusControls);
 
-    } else if (claimed) {
-      if (!item.ownerStatus && currentUser && myClaims[item.id]) {
+    } else if (offList) {
+      if (!ownerMarkedOffList && currentUser && myClaims[item.id]) {
         const undoButton = document.createElement("button");
         undoButton.type = "button";
         undoButton.className = "btn ghost small";
@@ -543,8 +570,8 @@ function render() {
   ).length;
 
   wishlistFooter.textContent = isOwner
-    ? `${wishlist.items.length} item(s) · ${wishlist.items.filter((item) => item.ownerStatus).length} marked unavailable`
-    : `${Math.max(0, wishlist.items.length - unavailableCount)} still available · ${unavailableCount} no longer needed`;
+    ? `${wishlist.items.length} item(s) · ${unavailableCount} off the list`
+    : `${Math.max(0, wishlist.items.length - unavailableCount)} still available · ${unavailableCount} off the list`;
 }
 
 async function handleOwnerItemStatus(itemId, ownerStatus) {
@@ -921,15 +948,17 @@ async function handleCopyLink() {
 
 signInBtn.addEventListener("click", (event) => {
   event.preventDefault();
-  signIn();
+  if (creatingAccount) signUp();
+  else signIn();
 });
 
 authForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  signIn();
+  if (creatingAccount) signUp();
+  else signIn();
 });
 
-signUpBtn.addEventListener("click", signUp);
+signUpBtn.addEventListener("click", () => setCreatingAccount(!creatingAccount));
 profileButton.addEventListener("click", () => {
   const isOpen = profileMenu.classList.toggle("hidden") === false;
   profileButton.setAttribute("aria-expanded", String(isOpen));
@@ -959,6 +988,25 @@ changePasswordButton.addEventListener("click", async () => {
     accountMessage.textContent = `Password reset instructions sent to ${currentUser.email}.`;
   } catch (error) {
     accountMessage.textContent = error.message;
+  }
+});
+accountForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentUser) return;
+  accountMessage.textContent = "";
+  try {
+    const firstName = accountFirstName.value.trim();
+    const lastName = accountLastName.value.trim();
+    const email = accountEmail.value.trim();
+    await currentUser.updateProfile({ displayName: `${firstName} ${lastName}`.trim() });
+    if (email !== currentUser.email) await currentUser.updateEmail(email);
+    if (accountPassword.value) await currentUser.updatePassword(accountPassword.value);
+    accountPassword.value = "";
+    accountMessage.textContent = "Account details saved.";
+  } catch (error) {
+    accountMessage.textContent = error.code === "auth/requires-recent-login"
+      ? "For security, sign in again before changing your email or password."
+      : error.message;
   }
 });
 ownerForm.addEventListener("submit", handleCreateOwner);
@@ -1006,6 +1054,9 @@ auth.onAuthStateChanged(async (user) => {
   signedInView.classList.toggle("hidden", !user);
   profileMenuWrap.classList.toggle("hidden", !user);
   accountEmail.value = user?.email || "";
+  const nameParts = (user?.displayName || "").split(/\s+/).filter(Boolean);
+  accountFirstName.value = nameParts.shift() || "";
+  accountLastName.value = nameParts.join(" ");
   if (!user) {
     signedInView.classList.remove("account-mode");
     accountView.classList.add("hidden");
