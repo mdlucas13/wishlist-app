@@ -529,7 +529,18 @@ async function handleOwnerItemStatus(itemId, ownerStatus) {
   };
 
   try {
-    await wishlistsRef.doc(wishlist.id).set(updatedWishlist);
+    const wishlistRef = wishlistsRef.doc(wishlist.id);
+    const batch = db.batch();
+    batch.set(wishlistRef, updatedWishlist);
+
+    if (!ownerStatus) {
+      const claimRef = wishlistRef.collection("claims").doc(itemId);
+      const claimOwnerRef = wishlistRef.collection("claimOwners").doc(itemId);
+      batch.delete(claimRef);
+      batch.delete(claimOwnerRef);
+    }
+
+    await batch.commit();
     await loadWishlistById(wishlist.id);
   } catch (error) {
     console.error("Could not update item status:", error);
