@@ -37,6 +37,7 @@ const changePasswordButton = document.getElementById("change-password-btn");
 const wishlistTabButtons = Array.from(document.querySelectorAll("[data-wishlist-tab]"));
 const wishlistTabPanels = Array.from(document.querySelectorAll(".wishlist-tab-panel"));
 const myWishlists = document.getElementById("my-wishlists");
+const shareBlock = document.getElementById("share-block");
 
 const ownerForm = document.getElementById("create-owner-form");
 const openLinkForm = document.getElementById("open-link-form");
@@ -83,6 +84,7 @@ function activateWishlistTab(tabName) {
     panel.hidden = !active;
     panel.classList.toggle("hidden", !active);
   });
+  shareBlock.classList.toggle("hidden", tabName !== "my-wishlists");
 }
 
 wishlistTabButtons.forEach((button) => {
@@ -309,21 +311,62 @@ async function loadMyWishlists() {
 
     snapshot.forEach((doc) => {
       const wishlist = doc.data();
+      const row = document.createElement("div");
       const button = document.createElement("button");
+      const deleteButton = document.createElement("button");
 
+      row.className = "wishlist-row";
       button.type = "button";
-      button.className = "btn ghost full-width wishlist-select";
+      button.className = "btn ghost wishlist-select";
       button.dataset.wishlistId = doc.id;
       button.setAttribute("aria-pressed", "false");
       button.textContent = wishlist.title || "Untitled wishlist";
       button.addEventListener("click", () => loadWishlistById(doc.id, true));
 
-      myWishlists.appendChild(button);
+      deleteButton.type = "button";
+      deleteButton.className = "btn ghost wishlist-delete";
+      deleteButton.textContent = "Delete";
+      deleteButton.setAttribute("aria-label", `Delete ${wishlist.title || "Untitled wishlist"}`);
+      deleteButton.addEventListener("click", () => deleteWishlist(doc.id, wishlist.title || "Untitled wishlist"));
+
+      row.append(button, deleteButton);
+      myWishlists.appendChild(row);
     });
   } catch (error) {
     console.error("Could not load your wishlists:", error);
     myWishlists.textContent =
       `Could not load your wishlists: ${error.message}`;
+  }
+}
+
+async function deleteWishlist(id, title) {
+  if (!currentUser || !confirm(`Delete “${title}” and all its items? This cannot be undone.`)) return;
+
+  try {
+    const wishlistRef = wishlistsRef.doc(id);
+    const claims = await wishlistRef.collection("claims").get();
+
+    for (let offset = 0; offset < claims.docs.length; offset += 240) {
+      const batch = db.batch();
+      claims.docs.slice(offset, offset + 240).forEach((doc) => {
+        batch.delete(doc.ref);
+        batch.delete(wishlistRef.collection("claimOwners").doc(doc.id));
+      });
+      await batch.commit();
+    }
+
+    await wishlistRef.delete();
+    if (viewModel.wishlist?.id === id) {
+      stopWatchingClaims();
+      sessionStorage.removeItem(activeWishlistSessionKey);
+      clearWishlistIdFromUrl();
+      viewModel = { wishlist: null, isOwner: false, claims: {}, myClaims: {} };
+      render();
+    }
+    await loadMyWishlists();
+  } catch (error) {
+    console.error("Could not delete wishlist:", error);
+    alert(`Could not delete wishlist: ${error.message}`);
   }
 }
 

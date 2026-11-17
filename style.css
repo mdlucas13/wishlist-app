@@ -353,11 +353,28 @@ p {
 
 .wishlist-select {
   justify-content: flex-start;
+  flex: 1;
+  min-width: 0;
   padding-inline: 13px;
   text-align: left;
   border-color: transparent !important;
   border-radius: 12px;
   background: #fbfaff !important;
+}
+
+.wishlist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wishlist-row + .wishlist-row {
+  margin-top: 8px;
+}
+
+.wishlist-delete {
+  flex: 0 0 auto;
+  color: #9f3a46;
 }
 
 .wishlist-select:hover {
