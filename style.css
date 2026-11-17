@@ -835,7 +835,9 @@ input:focus-visible {
 
 .item-owner-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  justify-content: flex-end;
 }
 
 .item-purchased-label {

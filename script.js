@@ -61,11 +61,13 @@ const noWishlistMessage = document.getElementById("no-wishlist-message");
 
 let currentUser = null;
 let claimsUnsubscribe = null;
+let myClaimsUnsubscribe = null;
 
 let viewModel = {
   wishlist: null,
   isOwner: false,
-  claims: {}
+  claims: {},
+  myClaims: {}
 };
 
 function activateWishlistTab(tabName) {
@@ -145,6 +147,10 @@ function stopWatchingClaims() {
     claimsUnsubscribe();
     claimsUnsubscribe = null;
   }
+  if (myClaimsUnsubscribe) {
+    myClaimsUnsubscribe();
+    myClaimsUnsubscribe = null;
+  }
 }
 
 function watchClaims(wishlistId) {
@@ -160,6 +166,9 @@ function watchClaims(wishlistId) {
         const claims = {};
         snapshot.forEach((doc) => {
           claims[doc.id] = doc.data();
+          if (currentUser && doc.data().claimedBy === currentUser.uid) {
+            void migrateLegacyClaim(wishlistId, doc.id, doc.data());
+          }
         });
 
         viewModel = { ...viewModel, claims };
@@ -169,6 +178,56 @@ function watchClaims(wishlistId) {
         console.error("Could not listen for item claims:", error);
       }
     );
+
+  if (currentUser) {
+    myClaimsUnsubscribe = wishlistsRef
+      .doc(wishlistId)
+      .collection("claimOwners")
+      .where("claimedBy", "==", currentUser.uid)
+      .onSnapshot(
+        (snapshot) => {
+          if (viewModel.wishlist?.id !== wishlistId) return;
+
+          const myClaims = {};
+          snapshot.forEach((doc) => {
+            myClaims[doc.id] = doc.data();
+          });
+
+          viewModel = { ...viewModel, myClaims };
+          render();
+        },
+        (error) => {
+          console.error("Could not listen for your claims:", error);
+        }
+      );
+  }
+}
+
+async function migrateLegacyClaim(wishlistId, itemId, legacyClaim) {
+  const claimRef = wishlistsRef.doc(wishlistId).collection("claims").doc(itemId);
+  const claimOwnerRef = wishlistsRef.doc(wishlistId).collection("claimOwners").doc(itemId);
+  const userId = currentUser?.uid;
+  if (!userId || legacyClaim.claimedBy !== userId) return;
+
+  try {
+    await db.runTransaction(async (transaction) => {
+      const claimDoc = await transaction.get(claimRef);
+      const ownerDoc = await transaction.get(claimOwnerRef);
+      if (!claimDoc.exists || ownerDoc.exists || claimDoc.data().claimedBy !== userId) return;
+
+      transaction.set(claimOwnerRef, {
+        itemId,
+        claimedBy: userId,
+        claimedAt: claimDoc.data().claimedAt || firebase.firestore.FieldValue.serverTimestamp()
+      });
+      transaction.update(claimRef, {
+        itemId,
+        claimedAt: claimDoc.data().claimedAt || firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  } catch (error) {
+    console.error("Could not migrate your existing claim:", error);
+  }
 }
 
 async function loadWishlistById(id, updateUrl = false) {
@@ -178,17 +237,30 @@ async function loadWishlistById(id, updateUrl = false) {
     const doc = await wishlistsRef.doc(id).get();
 
     if (!doc.exists) {
-      viewModel = { wishlist: null, isOwner: false, claims: {} };
+      viewModel = { wishlist: null, isOwner: false, claims: {}, myClaims: {} };
       render();
       return;
     }
 
     const wishlist = doc.data();
+    const isOwner = Boolean(currentUser && wishlist.ownerUid === currentUser.uid);
+    wishlist.items = wishlist.items || [];
+
+    if (isOwner) {
+      const availableItemIds = wishlist.items
+        .filter((item) => !item.ownerStatus && !item.purchased)
+        .map((item) => item.id);
+      if (JSON.stringify(wishlist.availableItemIds || []) !== JSON.stringify(availableItemIds)) {
+        await wishlistsRef.doc(id).update({ availableItemIds });
+        wishlist.availableItemIds = availableItemIds;
+      }
+    }
 
     viewModel = {
-      wishlist: { ...wishlist, items: wishlist.items || [] },
-      isOwner: Boolean(currentUser && wishlist.ownerUid === currentUser.uid),
-      claims: {}
+      wishlist,
+      isOwner,
+      claims: {},
+      myClaims: {}
     };
 
     if (updateUrl) {
@@ -242,7 +314,7 @@ async function loadMyWishlists() {
 }
 
 function render() {
-  const { wishlist, isOwner, claims } = viewModel;
+  const { wishlist, isOwner, claims, myClaims = {} } = viewModel;
 
   myWishlists.querySelectorAll(".wishlist-select").forEach((button) => {
     const selected = button.dataset.wishlistId === wishlist?.id;
@@ -278,7 +350,7 @@ function render() {
   }
 
   wishlist.items.forEach((item) => {
-    const claimed = Boolean(claims[item.id] || item.purchased);
+    const claimed = Boolean(claims[item.id] || item.purchased || item.ownerStatus);
     const li = document.createElement("li");
 
     li.className = `item-card${claimed && !isOwner ? " purchased" : ""}`;
@@ -336,6 +408,13 @@ function render() {
     actions.className = "item-actions";
 
     if (isOwner) {
+      if (item.ownerStatus || item.purchased) {
+        const status = document.createElement("span");
+        status.className = "item-status-pill";
+        status.textContent = item.ownerStatus === "bought" ? "Bought" : "No longer needed";
+        meta.appendChild(status);
+      }
+
       const editButton = document.createElement("button");
       editButton.type = "button";
       editButton.className = "btn ghost small";
@@ -350,23 +429,46 @@ function render() {
       removeButton.addEventListener("click", () => handleDeleteItem(item.id));
       actions.appendChild(removeButton);
 
-    }  else if (claimed) {
-  const label = document.createElement("span");
-  label.className = "item-purchased-label";
-  label.textContent = "No longer needed";
-  actions.appendChild(label);
+      const statusControls = document.createElement("div");
+      statusControls.className = "item-owner-controls";
 
-  const claim = claims[item.id];
+      if (item.ownerStatus || item.purchased) {
+        const availableButton = document.createElement("button");
+        availableButton.type = "button";
+        availableButton.className = "btn ghost small";
+        availableButton.textContent = "Make available";
+        availableButton.addEventListener("click", () => handleOwnerItemStatus(item.id, null));
+        statusControls.appendChild(availableButton);
+      } else {
+        [
+          { status: "bought", label: "Mark bought" },
+          { status: "not-needed", label: "No longer needed" }
+        ].forEach(({ status, label }) => {
+          const statusButton = document.createElement("button");
+          statusButton.type = "button";
+          statusButton.className = "btn ghost small";
+          statusButton.textContent = label;
+          statusButton.addEventListener("click", () => handleOwnerItemStatus(item.id, status));
+          statusControls.appendChild(statusButton);
+        });
+      }
+      actions.appendChild(statusControls);
 
-  if (currentUser && claim?.claimedBy === currentUser.uid) {
-    const undoButton = document.createElement("button");
-    undoButton.type = "button";
-    undoButton.className = "btn ghost small";
-    undoButton.textContent = "Undo claim";
-    undoButton.addEventListener("click", () => undoClaim(item.id));
-    actions.appendChild(undoButton);
-  }
-}else {
+    } else if (claimed) {
+      const label = document.createElement("span");
+      label.className = "item-purchased-label";
+      label.textContent = "No longer needed";
+      actions.appendChild(label);
+
+      if (!item.ownerStatus && currentUser && myClaims[item.id]) {
+        const undoButton = document.createElement("button");
+        undoButton.type = "button";
+        undoButton.className = "btn ghost small";
+        undoButton.textContent = "Undo claim";
+        undoButton.addEventListener("click", () => undoClaim(item.id));
+        actions.appendChild(undoButton);
+      }
+    } else {
       const claimButton = document.createElement("button");
       claimButton.type = "button";
       claimButton.className = "btn primary small";
@@ -379,11 +481,46 @@ function render() {
     itemsList.appendChild(li);
   });
 
-  const claimedCount = Object.keys(claims).length;
+  const unavailableCount = wishlist.items.filter((item) =>
+    claims[item.id] || item.purchased || item.ownerStatus
+  ).length;
 
   wishlistFooter.textContent = isOwner
-    ? `${wishlist.items.length} item(s). Claim status is hidden from you.`
-    : `${Math.max(0, wishlist.items.length - claimedCount)} still available · ${claimedCount} claimed`;
+    ? `${wishlist.items.length} item(s) · ${wishlist.items.filter((item) => item.ownerStatus).length} marked unavailable`
+    : `${Math.max(0, wishlist.items.length - unavailableCount)} still available · ${unavailableCount} no longer needed`;
+}
+
+async function handleOwnerItemStatus(itemId, ownerStatus) {
+  if (!viewModel.isOwner || !viewModel.wishlist) return;
+
+  const wishlist = viewModel.wishlist;
+  const item = wishlist.items.find((entry) => entry.id === itemId);
+  if (!item) return;
+  const availableItemIds = new Set(wishlist.availableItemIds || []);
+  if (ownerStatus) availableItemIds.delete(itemId);
+  else availableItemIds.add(itemId);
+  const updatedWishlist = {
+    ...wishlist,
+    availableItemIds: [...availableItemIds],
+    items: wishlist.items.map((item) => {
+      if (item.id !== itemId) return item;
+      const updatedItem = { ...item };
+      if (ownerStatus) updatedItem.ownerStatus = ownerStatus;
+      else {
+        delete updatedItem.ownerStatus;
+        delete updatedItem.purchased;
+      }
+      return updatedItem;
+    })
+  };
+
+  try {
+    await wishlistsRef.doc(wishlist.id).set(updatedWishlist);
+    await loadWishlistById(wishlist.id);
+  } catch (error) {
+    console.error("Could not update item status:", error);
+    alert(`Could not update item status: ${error.message}`);
+  }
 }
 
 function showItemEditor(itemCard, item) {
@@ -507,6 +644,7 @@ async function handleCreateOwner(event) {
     ownerName,
     title,
     items: [],
+    availableItemIds: [],
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   };
 
@@ -547,7 +685,8 @@ async function handleAddItem(event) {
 
     const next = {
       ...viewModel.wishlist,
-      items: [...viewModel.wishlist.items, item]
+      items: [...viewModel.wishlist.items, item],
+      availableItemIds: [...new Set([...(viewModel.wishlist.availableItemIds || []), itemId])]
     };
     await wishlistsRef.doc(next.id).set(next);
     addItemForm.reset();
@@ -571,7 +710,8 @@ async function handleDeleteItem(itemId) {
   const id = viewModel.wishlist.id;
   const next = {
     ...viewModel.wishlist,
-    items: viewModel.wishlist.items.filter((item) => item.id !== itemId)
+    items: viewModel.wishlist.items.filter((item) => item.id !== itemId),
+    availableItemIds: (viewModel.wishlist.availableItemIds || []).filter((id) => id !== itemId)
   };
 
   try {
@@ -581,10 +721,17 @@ async function handleDeleteItem(itemId) {
       .doc(id)
       .collection("claims")
       .doc(itemId);
+    const claimOwnerRef = wishlistsRef
+      .doc(id)
+      .collection("claimOwners")
+      .doc(itemId);
 
     const claimDoc = await claimRef.get();
     if (claimDoc.exists) {
-      await claimRef.delete();
+      const batch = db.batch();
+      batch.delete(claimRef);
+      batch.delete(claimOwnerRef);
+      await batch.commit();
     }
 
     await loadWishlistById(id);
@@ -601,16 +748,23 @@ async function undoClaim(itemId) {
     .doc(viewModel.wishlist.id)
     .collection("claims")
     .doc(itemId);
+  const claimOwnerRef = wishlistsRef
+    .doc(viewModel.wishlist.id)
+    .collection("claimOwners")
+    .doc(itemId);
 
   try {
-    const claimDoc = await claimRef.get();
+    const claimDoc = await claimOwnerRef.get();
 
     if (!claimDoc.exists || claimDoc.data().claimedBy !== currentUser.uid) {
       alert("Only the person who claimed this item can undo the claim.");
       return;
     }
 
-    await claimRef.delete();
+    const batch = db.batch();
+    batch.delete(claimRef);
+    batch.delete(claimOwnerRef);
+    await batch.commit();
   } catch (error) {
     console.error("Could not undo claim:", error);
     alert(`Could not undo claim: ${error.message}`);
@@ -627,16 +781,31 @@ async function claimItem(itemId) {
     .doc(wishlistId)
     .collection("claims")
     .doc(itemId);
+  const claimOwnerRef = wishlistsRef
+    .doc(wishlistId)
+    .collection("claimOwners")
+    .doc(itemId);
+  const wishlistRef = wishlistsRef.doc(wishlistId);
 
   try {
     await db.runTransaction(async (transaction) => {
       const claimDoc = await transaction.get(claimRef);
+      const wishlistDoc = await transaction.get(wishlistRef);
 
       if (claimDoc.exists) {
         throw new Error("Someone has already claimed this item.");
       }
 
+      const item = (wishlistDoc.data()?.items || []).find((entry) => entry.id === itemId);
+      if (!item || item.ownerStatus || item.purchased || !(wishlistDoc.data()?.availableItemIds || []).includes(itemId)) {
+        throw new Error("This item is no longer available.");
+      }
+
       transaction.set(claimRef, {
+        itemId,
+        claimedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      transaction.set(claimOwnerRef, {
         itemId,
         claimedBy: currentUser.uid,
         claimedAt: firebase.firestore.FieldValue.serverTimestamp()

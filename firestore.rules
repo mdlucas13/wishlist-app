@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /wishlists/{wishlistId} {
+      allow get: if true;
+      allow list: if request.auth != null
+                  && resource.data.ownerUid == request.auth.uid;
+
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.items is list
+                    && request.resource.data.availableItemIds is list;
+
+      allow update: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.ownerUid == resource.data.ownerUid
+                    && request.resource.data.items is list
+                    && request.resource.data.availableItemIds is list;
+
+      allow delete: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid;
+
+      match /claims/{itemId} {
+        // Public claim markers contain only itemId and claimedAt.
+        allow get, list: if true;
+
+        allow create: if request.auth != null
+                      && exists(/databases/$(database)/documents/wishlists/$(wishlistId))
+                      && get(/databases/$(database)/documents/wishlists/$(wishlistId)).data.ownerUid != request.auth.uid
+                      && get(/databases/$(database)/documents/wishlists/$(wishlistId)).data.availableItemIds is list
+                      && get(/databases/$(database)/documents/wishlists/$(wishlistId)).data.availableItemIds.hasAny([itemId])
+                      && request.resource.data.keys().hasOnly(['itemId', 'claimedAt'])
+                      && request.resource.data.keys().hasAll(['itemId', 'claimedAt'])
+                      && request.resource.data.itemId == itemId
+                      && existsAfter(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId))
+                      && getAfter(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId)).data.claimedBy == request.auth.uid;
+
+        // The claimant can migrate their own old public claim by removing its UID.
+        allow update: if request.auth != null
+                      && resource.data.claimedBy == request.auth.uid
+                      && request.resource.data.keys().hasOnly(['itemId', 'claimedAt'])
+                      && request.resource.data.itemId == itemId
+                      && request.resource.data.claimedAt == resource.data.claimedAt
+                      && existsAfter(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId))
+                      && getAfter(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId)).data.claimedBy == request.auth.uid;
+
+        allow delete: if request.auth != null
+                      && !existsAfter(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId))
+                      && ((!exists(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId))
+                           && get(/databases/$(database)/documents/wishlists/$(wishlistId)).data.ownerUid == request.auth.uid)
+                          || (exists(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId))
+                              && (get(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId)).data.claimedBy == request.auth.uid
+                                  || get(/databases/$(database)/documents/wishlists/$(wishlistId)).data.ownerUid == request.auth.uid)));
+      }
+
+      match /claimOwners/{itemId} {
+        // Only a claimant can read their own identity record.
+        allow get, list: if request.auth != null
+                         && resource.data.claimedBy == request.auth.uid;
+
+        allow create: if request.auth != null
+                      && request.resource.data.keys().hasOnly(['itemId', 'claimedBy', 'claimedAt'])
+                      && request.resource.data.keys().hasAll(['itemId', 'claimedBy', 'claimedAt'])
+                      && request.resource.data.itemId == itemId
+                      && request.resource.data.claimedBy == request.auth.uid
+                      && existsAfter(/databases/$(database)/documents/wishlists/$(wishlistId)/claims/$(itemId))
+                      && getAfter(/databases/$(database)/documents/wishlists/$(wishlistId)/claims/$(itemId)).data.itemId == itemId;
+
+        allow update: if false;
+
+        allow delete: if request.auth != null
+                      && (!exists(/databases/$(database)/documents/wishlists/$(wishlistId)/claimOwners/$(itemId))
+                      || (!existsAfter(/databases/$(database)/documents/wishlists/$(wishlistId)/claims/$(itemId))
+                          && (resource.data.claimedBy == request.auth.uid
+                              || get(/databases/$(database)/documents/wishlists/$(wishlistId)).data.ownerUid == request.auth.uid)));
+      }
+    }
+  }
+}
